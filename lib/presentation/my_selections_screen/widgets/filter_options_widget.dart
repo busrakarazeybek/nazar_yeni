@@ -20,7 +20,7 @@ class FilterOptionsWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.all(2.w),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -34,7 +34,7 @@ class FilterOptionsWidget extends StatelessWidget {
       child: Column(
         children: [
           _buildSearchField(),
-          SizedBox(height: 2.h),
+          SizedBox(height: 1.5.h),
           _buildFilterChips(),
         ],
       ),
@@ -48,11 +48,11 @@ class FilterOptionsWidget extends StatelessWidget {
       decoration: InputDecoration(
         hintText: 'Aday ismi ile ara...',
         prefixIcon: Padding(
-          padding: EdgeInsets.all(3.w),
+          padding: EdgeInsets.all(2.w),
           child: CustomIconWidget(
             iconName: 'search',
             color: Colors.grey[400]!,
-            size: 20.w,
+            size: 16,
           ),
         ),
         suffixIcon: searchController.text.isNotEmpty
@@ -64,7 +64,7 @@ class FilterOptionsWidget extends StatelessWidget {
                 icon: CustomIconWidget(
                   iconName: 'clear',
                   color: Colors.grey[400]!,
-                  size: 20.w,
+                  size: 16,
                 ),
               )
             : null,
@@ -82,7 +82,7 @@ class FilterOptionsWidget extends StatelessWidget {
         ),
         filled: true,
         fillColor: Colors.grey[50],
-        contentPadding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+        contentPadding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
       ),
     );
   }

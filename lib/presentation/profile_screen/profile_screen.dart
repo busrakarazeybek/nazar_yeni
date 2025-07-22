@@ -57,6 +57,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
     "Tarih",
   ];
 
+  List<BottomNavigationBarItem> _buildBottomNavItems() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final userProfile = authProvider.currentUserProfile;
+    final isSelector = userProfile?.role == UserRole.selector;
+    print('DEBUG Profile Screen: User role: ${userProfile?.role}, isSelector: $isSelector');
+
+    return [
+      BottomNavigationBarItem(
+        icon: CustomIconWidget(
+          iconName: 'home',
+          color: _currentIndex == 0
+              ? AppTheme.lightTheme.primaryColor
+              : AppTheme.textSecondaryLight,
+          size: 24,
+        ),
+        label: 'Ana Sayfa',
+      ),
+      BottomNavigationBarItem(
+        icon: CustomIconWidget(
+          iconName: isSelector ? 'list' : 'favorite',
+          color: _currentIndex == 1
+              ? AppTheme.lightTheme.primaryColor
+              : AppTheme.textSecondaryLight,
+          size: 24,
+        ),
+        label: isSelector ? 'Önerilerim' : 'Eşleşmeler',
+      ),
+      BottomNavigationBarItem(
+        icon: CustomIconWidget(
+          iconName: 'people',
+          color: _currentIndex == 2
+              ? AppTheme.lightTheme.primaryColor
+              : AppTheme.textSecondaryLight,
+          size: 24,
+        ),
+        label: isSelector ? 'Adaylarım' : 'Seçicilerim',
+      ),
+      BottomNavigationBarItem(
+        icon: CustomIconWidget(
+          iconName: 'person',
+          color: _currentIndex == 3
+              ? AppTheme.lightTheme.primaryColor
+              : AppTheme.textSecondaryLight,
+          size: 24,
+        ),
+        label: 'Profil',
+      ),
+    ];
+  }
+
   void _onBottomNavTap(int index) {
     if (_hasUnsavedChanges) {
       _showUnsavedChangesDialog(() {
@@ -96,10 +146,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         break;
       case 1:
-        Navigator.pushReplacementNamed(context, '/matches-screen');
+        // Role-based navigation for second tab
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final userProfile = authProvider.currentUserProfile;
+        if (userProfile?.role == UserRole.selector) {
+          Navigator.pushReplacementNamed(context, '/my-selections-screen');
+        } else {
+          Navigator.pushReplacementNamed(context, '/matches-screen');
+        }
         break;
       case 2:
-        Navigator.pushReplacementNamed(context, '/my-selectors-screen');
+        // Role-based navigation for third tab  
+        final authProvider2 = Provider.of<AuthProvider>(context, listen: false);
+        final userProfile2 = authProvider2.currentUserProfile;
+        if (userProfile2?.role == UserRole.selector) {
+          Navigator.pushReplacementNamed(context, '/my-selectors-screen');
+        } else {
+          Navigator.pushReplacementNamed(context, '/my-selectors-screen');
+        }
         break;
       case 3:
         // Already on profile screen
@@ -343,48 +407,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               AppTheme.lightTheme.bottomNavigationBarTheme.selectedItemColor,
           unselectedItemColor:
               AppTheme.lightTheme.bottomNavigationBarTheme.unselectedItemColor,
-          items: [
-            BottomNavigationBarItem(
-              icon: CustomIconWidget(
-                iconName: 'home',
-                color: _currentIndex == 0
-                    ? AppTheme.lightTheme.primaryColor
-                    : AppTheme.textSecondaryLight,
-                size: 24,
-              ),
-              label: 'Ana Sayfa',
-            ),
-            BottomNavigationBarItem(
-              icon: CustomIconWidget(
-                iconName: 'favorite',
-                color: _currentIndex == 1
-                    ? AppTheme.lightTheme.primaryColor
-                    : AppTheme.textSecondaryLight,
-                size: 24,
-              ),
-              label: 'Eşleşmeler',
-            ),
-            BottomNavigationBarItem(
-              icon: CustomIconWidget(
-                iconName: 'people',
-                color: _currentIndex == 2
-                    ? AppTheme.lightTheme.primaryColor
-                    : AppTheme.textSecondaryLight,
-                size: 24,
-              ),
-              label: 'Seçicilerim',
-            ),
-            BottomNavigationBarItem(
-              icon: CustomIconWidget(
-                iconName: 'person',
-                color: _currentIndex == 3
-                    ? AppTheme.lightTheme.primaryColor
-                    : AppTheme.textSecondaryLight,
-                size: 24,
-              ),
-              label: 'Profil',
-            ),
-          ],
+          items: _buildBottomNavItems(),
         ),
         floatingActionButton: _hasUnsavedChanges
             ? FloatingActionButton(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../services/match_proposal_service.dart';
 import './widgets/empty_selectors_widget.dart';
 import './widgets/invite_selector_widget.dart';
 import './widgets/selector_card_widget.dart';
@@ -17,6 +18,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
       GlobalKey<RefreshIndicatorState>();
+  final UserService _userService = UserService();
 
   List<Map<String, dynamic>> _allSelectors = [];
   List<Map<String, dynamic>> _filteredSelectors = [];
@@ -26,8 +28,8 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMockData();
     _searchController.addListener(_onSearchChanged);
+    _loadMockData();
   }
 
   @override
@@ -37,78 +39,207 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     super.dispose();
   }
 
-  void _loadMockData() {
-    _allSelectors = [
-      {
-        "id": 1,
-        "name": "Ayşe Demir",
-        "profileImage":
-            "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=400",
-        "relationshipType": "Aile",
-        "isActive": true,
-        "totalSent": 12,
-        "pending": 3,
-        "accepted": 7,
-        "rejected": 2,
-        "successRate": 58.3,
-        "lastActivity": "2 saat önce",
-        "joinedDate": "15 Ocak 2024",
-        "description": "Teyzem, ailemizin en deneyimli görücüsü",
-        "isPaused": false,
-      },
-      {
-        "id": 2,
-        "name": "Mehmet Özkan",
-        "profileImage":
-            "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=400",
-        "relationshipType": "Arkadaş",
-        "isActive": true,
-        "totalSent": 8,
-        "pending": 2,
-        "accepted": 4,
-        "rejected": 2,
-        "successRate": 50.0,
-        "lastActivity": "1 gün önce",
-        "joinedDate": "22 Şubat 2024",
-        "description": "Yakın arkadaşım, sosyal çevresi geniş",
-        "isPaused": false,
-      },
-      {
-        "id": 3,
-        "name": "Fatma Yılmaz",
-        "profileImage":
-            "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=400",
-        "relationshipType": "Aile",
-        "isActive": false,
-        "totalSent": 15,
-        "pending": 1,
-        "accepted": 9,
-        "rejected": 5,
-        "successRate": 60.0,
-        "lastActivity": "1 hafta önce",
-        "joinedDate": "8 Mart 2024",
-        "description": "Annem, geleneksel değerlere önem verir",
-        "isPaused": true,
-      },
-      {
-        "id": 4,
-        "name": "Ali Kaya",
-        "profileImage":
-            "https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=400",
-        "relationshipType": "Arkadaş",
-        "isActive": true,
-        "totalSent": 6,
-        "pending": 4,
-        "accepted": 2,
-        "rejected": 0,
-        "successRate": 33.3,
-        "lastActivity": "3 saat önce",
-        "joinedDate": "5 Nisan 2024",
-        "description": "İş arkadaşım, profesyonel çevresi var",
-        "isPaused": false,
-      },
+  Future<void> _loadMockData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+
+      if (currentUser == null) {
+        setState(() {
+          _allSelectors = [];
+          _filteredSelectors = [];
+          _isLoading = false;
+        });
+        return;
+      }
+
+      List<Map<String, dynamic>> loadedSelectors = [];
+      
+      if (currentUser.role == UserRole.selector) {
+        // For selectors: Get candidates (existing logic)
+        final candidates = await _userService.getSelectorCandidates(currentUser.id);
+        
+        // Convert UserProfile candidates to selector format for UI consistency
+        loadedSelectors = candidates.map((candidate) {
+        // Generate mock stats based on candidate ID for consistency
+        final stats = _generateStatsForCandidate(candidate.id);
+        
+          return {
+            "id": candidate.id, // Use real ID instead of hashCode
+            "name": candidate.fullName,
+            "profileImage": candidate.imageUrl?.isNotEmpty == true ? candidate.imageUrl : _getDefaultImageForCandidate(candidate.fullName),
+            "relationshipType": _getRelationshipType(candidate),
+            "isActive": candidate.isActive,
+            "totalSent": stats['totalSent'],
+            "pending": stats['pending'],
+            "accepted": stats['accepted'],
+            "rejected": stats['rejected'],
+            "successRate": stats['successRate'],
+            "lastActivity": _getLastActivity(candidate),
+            "joinedDate": _formatJoinDate(candidate.createdAt),
+            "description": candidate.bio ?? _getDefaultDescription(candidate),
+            "isPaused": !candidate.isActive,
+            "age": candidate.age,
+            "location": candidate.location,
+            "profession": candidate.profession,
+            "interests": candidate.interests,
+          };
+        }).toList();
+        
+      } else if (currentUser.role == UserRole.candidate) {
+        // For candidates: Get selectors (similar to candidate home screen logic)
+        final matchProposalService = MatchProposalService();
+        final proposals = await matchProposalService.getProposalsForCandidate(currentUser.id);
+        
+        // Extract unique selector IDs from proposals
+        final selectorIds = proposals.map((p) => p.selectorId).toSet().toList();
+        final selectors = <UserProfile>[];
+        
+        for (final selectorId in selectorIds) {
+          try {
+            final selector = await _userService.getUserProfile(selectorId);
+            if (selector != null) {
+              selectors.add(selector);
+            }
+          } catch (e) {
+            print('Error loading selector $selectorId: $e');
+          }
+        }
+        
+        // Convert UserProfile selectors to selector format for UI consistency
+        loadedSelectors = selectors.map((selector) {
+          // Generate mock stats based on selector ID for consistency
+          final stats = _generateStatsForCandidate(selector.id);
+          
+          return {
+            "id": selector.id,
+            "name": selector.fullName,
+            "profileImage": selector.imageUrl?.isNotEmpty == true ? selector.imageUrl : _getDefaultImageForCandidate(selector.fullName),
+            "relationshipType": _getRelationshipType(selector),
+            "isActive": selector.isActive,
+            "totalSent": stats['totalSent'],
+            "pending": stats['pending'],
+            "accepted": stats['accepted'],
+            "rejected": stats['rejected'],
+            "successRate": stats['successRate'],
+            "lastActivity": _getLastActivity(selector),
+            "joinedDate": _formatJoinDate(selector.createdAt),
+            "description": selector.bio ?? _getDefaultDescription(selector),
+            "isPaused": !selector.isActive,
+            "age": selector.age,
+            "location": selector.location,
+            "profession": selector.profession,
+            "interests": selector.interests,
+          };
+        }).toList();
+      }
+      
+      // If no real candidates, add fallback data
+      if (loadedSelectors.isEmpty) {
+        loadedSelectors = [
+          {
+            "id": 1,
+            "name": "Aday Bir",
+            "profileImage": "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=400",
+            "relationshipType": "Aile",
+            "isActive": true,
+            "totalSent": 12,
+            "pending": 3,
+            "accepted": 7,
+            "rejected": 2,
+            "successRate": 58.3,
+            "lastActivity": "2 saat önce",
+            "joinedDate": "15 Ocak 2024",
+            "description": "Ailemizin sevgili adayı",
+            "isPaused": false,
+            "age": 25,
+            "location": "İstanbul",
+            "profession": "Mühendis",
+            "interests": ["Kitap", "Spor"],
+          },
+        ];
+      }
+      
+      setState(() {
+        _allSelectors = loadedSelectors;
+        _filteredSelectors = List.from(_allSelectors);
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading candidates: $e');
+      setState(() {
+        // Fallback to empty or default data on error
+        _allSelectors = [];
+        _filteredSelectors = [];
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _getDefaultImageForCandidate(String name) {
+    // Return different default images based on name
+    final images = [
+      "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=400",
+      "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=400",
+      "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=400",
+      "https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=400",
     ];
-    _filteredSelectors = List.from(_allSelectors);
+    return images[name.hashCode % images.length];
+  }
+
+  String _getDefaultDescription(UserProfile candidate) {
+    if (candidate.bio != null && candidate.bio!.isNotEmpty) {
+      return candidate.bio!;
+    }
+    final age = candidate.age != null ? "${candidate.age} yaşında" : "";
+    final location = candidate.location != null ? candidate.location! : "";
+    final profession = candidate.profession != null ? candidate.profession! : "";
+    
+    List<String> parts = [];
+    if (age.isNotEmpty) parts.add(age);
+    if (location.isNotEmpty) parts.add("$location'de yaşıyor");
+    if (profession.isNotEmpty) parts.add(profession);
+    
+    return parts.isNotEmpty ? parts.join(", ") : "Ailemizin sevgili adayı";
+  }
+
+  Map<String, dynamic> _generateStatsForCandidate(String candidateId) {
+    // Generate consistent mock stats based on candidate ID
+    final hash = candidateId.hashCode.abs();
+    return {
+      'totalSent': 8 + (hash % 10),
+      'pending': 1 + (hash % 4),
+      'accepted': 3 + (hash % 8),
+      'rejected': hash % 3,
+      'successRate': 40.0 + ((hash % 30).toDouble()),
+    };
+  }
+
+  String _getRelationshipType(UserProfile candidate) {
+    // You could add this to UserProfile model or determine from other fields
+    return candidate.age != null && candidate.age! > 25 ? "Aile" : "Arkadaş";
+  }
+
+  String _getLastActivity(UserProfile candidate) {
+    final now = DateTime.now();
+    final diff = now.difference(candidate.createdAt);
+    
+    if (diff.inDays > 7) return "${diff.inDays} gün önce";
+    if (diff.inDays > 0) return "${diff.inDays} gün önce";
+    if (diff.inHours > 0) return "${diff.inHours} saat önce";
+    return "Az önce";
+  }
+
+  String _formatJoinDate(DateTime date) {
+    final months = [
+      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+    ];
+    return "${date.day} ${months[date.month - 1]} ${date.year}";
   }
 
   void _onSearchChanged() {
@@ -129,17 +260,11 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
       _isLoading = true;
     });
 
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 2));
-
-    // Simulate updated data
-    for (var selector in _allSelectors) {
-      selector['lastActivity'] = "Az önce güncellendi";
-    }
+    // Reload real data
+    await _loadMockData();
 
     setState(() {
       _isLoading = false;
-      _filteredSelectors = List.from(_allSelectors);
     });
   }
 
@@ -294,8 +419,8 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                         SizedBox(width: 2.w),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => _sendAppreciationMessage(selector),
-                            child: const Text("Teşekkür Mesajı"),
+                            onPressed: () => _navigateToMatchmaking(selector),
+                            child: Text(_getActionButtonText()),
                           ),
                         ),
                       ],
@@ -360,14 +485,34 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     );
   }
 
-  void _sendAppreciationMessage(Map<String, dynamic> selector) {
+  void _navigateToMatchmaking(Map<String, dynamic> selector) {
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content:
-            Text("${selector['name']} kişisine teşekkür mesajı gönderildi"),
-      ),
-    );
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final role = authProvider.currentUserProfile?.role;
+    
+    if (role == UserRole.selector) {
+      // For selectors: Navigate to enhanced selector home screen with candidate pre-selected
+      final candidateId = selector['id'].toString();
+      print('DEBUG: Selector navigating with candidate ID: $candidateId');
+      print('DEBUG: Selector data: $selector');
+      
+      Navigator.pushNamed(
+        context, 
+        AppRoutes.enhancedSelectorHomeScreen,
+        arguments: {'selectedCandidateId': candidateId},
+      );
+    } else if (role == UserRole.candidate) {
+      // For candidates: Navigate to candidate home screen with selector pre-selected
+      final selectorId = selector['id'].toString();
+      print('DEBUG: Candidate navigating with selector ID: $selectorId');
+      print('DEBUG: Selector data: $selector');
+      
+      Navigator.pushNamed(
+        context, 
+        AppRoutes.candidateHomeScreen,
+        arguments: {'selectedSelectorId': selectorId},
+      );
+    }
   }
 
   void _showInviteSelector() {
@@ -429,12 +574,141 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     );
   }
 
+  String _getScreenTitle() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final role = authProvider.currentUserProfile?.role;
+    return role == UserRole.selector ? "Adaylarım" : "Seçicilerim";
+  }
+
+  String _getSearchHint() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final role = authProvider.currentUserProfile?.role;
+    return role == UserRole.selector ? "Aday ara..." : "Seçici ara...";
+  }
+
+  String _getInviteButtonText() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final role = authProvider.currentUserProfile?.role;
+    return role == UserRole.selector ? "Görücü Davet Et" : "Seçici Davet Et";
+  }
+
+  String _getActionButtonText() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final role = authProvider.currentUserProfile?.role;
+    return role == UserRole.selector ? "Eşleştir" : "Seçtiği Adaylar";
+  }
+
+  Widget _buildBottomNavigationBar() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final role = authProvider.currentUserProfile?.role;
+    final isSelector = role == UserRole.selector;
+
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      currentIndex: 2, // My Selectors tab active
+      onTap: (index) {
+        switch (index) {
+          case 0:
+            if (role == UserRole.selector) {
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.enhancedSelectorHomeScreen,
+                (route) => false,
+              );
+            } else if (role == UserRole.candidate) {
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.candidateHomeScreen,
+                (route) => false,
+              );
+            }
+            break;
+          case 1:
+            if (role == UserRole.selector) {
+              Navigator.pushReplacementNamed(context, '/my-selections-screen');
+            } else {
+              Navigator.pushReplacementNamed(context, '/matches-screen');
+            }
+            break;
+          case 2:
+            // Current screen - do nothing
+            break;
+          case 3:
+            Navigator.pushReplacementNamed(context, '/profile-screen');
+            break;
+        }
+      },
+      items: [
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: 'home',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
+            size: 24,
+          ),
+          activeIcon: CustomIconWidget(
+            iconName: 'home',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            size: 24,
+          ),
+          label: 'Ana Sayfa',
+        ),
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: isSelector ? 'list' : 'favorite',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
+            size: 24,
+          ),
+          activeIcon: CustomIconWidget(
+            iconName: isSelector ? 'list' : 'favorite',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            size: 24,
+          ),
+          label: isSelector ? 'Önerilerim' : 'Eşleşmeler',
+        ),
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: 'people',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            size: 24,
+          ),
+          activeIcon: CustomIconWidget(
+            iconName: 'people',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            size: 24,
+          ),
+          label: isSelector ? 'Adaylarım' : 'Seçicilerim',
+        ),
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: 'person',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
+            size: 24,
+          ),
+          activeIcon: CustomIconWidget(
+            iconName: 'person',
+            color: AppTheme
+                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            size: 24,
+          ),
+          label: 'Profil',
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text("Görücülerim"),
+        title: Text(_getScreenTitle()),
         centerTitle: true,
         actions: [
           IconButton(
@@ -456,7 +730,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: "Görücü ara...",
+                  hintText: _getSearchHint(),
                   prefixIcon: Padding(
                     padding: EdgeInsets.all(3.w),
                     child: CustomIconWidget(
@@ -519,106 +793,10 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                     .lightTheme.floatingActionButtonTheme.foregroundColor!,
                 size: 20,
               ),
-              label: const Text("Görücü Davet Et"),
+              label: Text(_getInviteButtonText()),
             )
           : null,
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: 2, // My Selectors tab active
-        onTap: (index) {
-          final authProvider =
-              Provider.of<AuthProvider>(context, listen: false);
-          final role = authProvider.currentUserProfile?.role;
-          switch (index) {
-            case 0:
-              if (role == UserRole.selector) {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  AppRoutes.enhancedSelectorHomeScreen,
-                  (route) => false,
-                );
-              } else if (role == UserRole.candidate) {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  AppRoutes.candidateHomeScreen,
-                  (route) => false,
-                );
-              }
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, '/matches-screen');
-              break;
-            case 2:
-              // Current screen - do nothing
-              break;
-            case 3:
-              Navigator.pushReplacementNamed(context, '/profile-screen');
-              break;
-          }
-        },
-        items: [
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'home',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
-              size: 24,
-            ),
-            activeIcon: CustomIconWidget(
-              iconName: 'home',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
-              size: 24,
-            ),
-            label: 'Ana Sayfa',
-          ),
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'favorite',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
-              size: 24,
-            ),
-            activeIcon: CustomIconWidget(
-              iconName: 'favorite',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
-              size: 24,
-            ),
-            label: 'Eşleşmeler',
-          ),
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'people',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
-              size: 24,
-            ),
-            activeIcon: CustomIconWidget(
-              iconName: 'people',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
-              size: 24,
-            ),
-            label: 'Görücülerim',
-          ),
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'person',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
-              size: 24,
-            ),
-            activeIcon: CustomIconWidget(
-              iconName: 'person',
-              color: AppTheme
-                  .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
-              size: 24,
-            ),
-            label: 'Profil',
-          ),
-        ],
-      ),
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 }

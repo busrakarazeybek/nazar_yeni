@@ -7,8 +7,8 @@ import '../../../core/app_export.dart';
 class EnhancedSwipeableCandidateCard extends StatefulWidget {
   final UserProfile candidate;
   final UserProfile? selectedCandidate;
-  final VoidCallback? onSwipeRight;
-  final VoidCallback? onSwipeLeft;
+  final void Function(UserProfile)? onSwipeRight;
+  final void Function(UserProfile)? onSwipeLeft;
   final bool isTopCard;
 
   const EnhancedSwipeableCandidateCard({
@@ -125,6 +125,7 @@ class _EnhancedSwipeableCandidateCardState
 
   @override
   Widget build(BuildContext context) {
+    print('DEBUG: Kartta görünen isim: ${widget.candidate.fullName}');
     final compatibilityScore = _calculateCompatibilityScore();
 
     return Align(
@@ -169,12 +170,12 @@ class _EnhancedSwipeableCandidateCardState
                             // Swiped right - like
                             _animateCardOff(Alignment.centerRight);
                             HapticFeedback.mediumImpact();
-                            widget.onSwipeRight?.call();
+                            widget.onSwipeRight?.call(widget.candidate);
                           } else {
                             // Swiped left - pass
                             _animateCardOff(Alignment.centerLeft);
                             HapticFeedback.lightImpact();
-                            widget.onSwipeLeft?.call();
+                            widget.onSwipeLeft?.call(widget.candidate);
                           }
                         } else {
                           // Snap back to center

@@ -130,6 +130,64 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
         onRefresh: _loadMyProposals,
         child: _buildBody(),
       ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 1, // My Selections tab active
+        onTap: (index) {
+          switch (index) {
+            case 0:
+              Navigator.pushReplacementNamed(context, '/enhanced-selector-home-screen');
+              break;
+            case 1:
+              // Already on my-selections-screen
+              break;
+            case 2:
+              Navigator.pushReplacementNamed(context, '/my-selectors-screen');
+              break;
+            case 3:
+              Navigator.pushReplacementNamed(context, '/profile-screen');
+              break;
+          }
+        },
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+        selectedItemColor: AppTheme.lightTheme.colorScheme.primary,
+        unselectedItemColor: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+        elevation: 8,
+        items: [
+          BottomNavigationBarItem(
+            icon: CustomIconWidget(
+              iconName: 'home',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              size: 24,
+            ),
+            label: 'Ana Sayfa',
+          ),
+          BottomNavigationBarItem(
+            icon: CustomIconWidget(
+              iconName: 'list',
+              color: AppTheme.lightTheme.colorScheme.primary,
+              size: 24,
+            ),
+            label: 'Önerilerim',
+          ),
+          BottomNavigationBarItem(
+            icon: CustomIconWidget(
+              iconName: 'people',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              size: 24,
+            ),
+            label: 'Adaylarım',
+          ),
+          BottomNavigationBarItem(
+            icon: CustomIconWidget(
+              iconName: 'person',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              size: 24,
+            ),
+            label: 'Profil',
+          ),
+        ],
+      ),
     );
   }
 

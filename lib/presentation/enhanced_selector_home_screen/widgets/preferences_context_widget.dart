@@ -20,18 +20,26 @@ class PreferencesContextWidget extends StatelessWidget {
     final hasPreferences = _hasAnyPreferences(selectedCandidate!);
 
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-      padding: EdgeInsets.all(3.w),
+      margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+      padding: EdgeInsets.all(1.5.w),
       decoration: BoxDecoration(
         color: hasPreferences
-            ? AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1)
+            ? AppTheme.lightTheme.primaryColor.withOpacity(0.06)
             : AppTheme.lightTheme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12.w),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: hasPreferences
-              ? AppTheme.lightTheme.primaryColor.withValues(alpha: 0.3)
-              : AppTheme.lightTheme.colorScheme.outline.withValues(alpha: 0.2),
+              ? AppTheme.lightTheme.primaryColor.withOpacity(0.18)
+              : AppTheme.lightTheme.colorScheme.outline.withOpacity(0.12),
+          width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -43,9 +51,9 @@ class PreferencesContextWidget extends StatelessWidget {
                 color: hasPreferences
                     ? AppTheme.lightTheme.primaryColor
                     : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                size: 20.w,
+                size: 18,
               ),
-              SizedBox(width: 2.w),
+              SizedBox(width: 1.5.w),
               Text(
                 hasPreferences
                     ? '${selectedCandidate!.fullName} için tercih filtreleri'
@@ -55,19 +63,21 @@ class PreferencesContextWidget extends StatelessWidget {
                       ? AppTheme.lightTheme.primaryColor
                       : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
           if (hasPreferences) ...[
-            SizedBox(height: 2.h),
+            SizedBox(height: 1.2.h),
             _buildPreferencesInfo(),
           ] else ...[
-            SizedBox(height: 1.h),
+            SizedBox(height: 0.7.h),
             Text(
               'Bu aday tercihlerini belirtmediği için tüm potansiyel adaylar karışık olarak gösterilecek.',
               style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                 color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                fontSize: 12,
               ),
             ),
           ],
@@ -86,67 +96,83 @@ class PreferencesContextWidget extends StatelessWidget {
   }
 
   Widget _buildPreferencesInfo() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (selectedCandidate!.preferredAgeMin != null &&
-            selectedCandidate!.preferredAgeMax != null)
-          _buildPreferenceRow(
-            'Yaş Aralığı',
-            '${selectedCandidate!.preferredAgeMin} - ${selectedCandidate!.preferredAgeMax}',
-            Icons.calendar_today,
-          ),
-        if (selectedCandidate!.preferredCities != null &&
-            selectedCandidate!.preferredCities!.isNotEmpty)
-          _buildPreferenceRow(
-            'Şehirler',
-            selectedCandidate!.preferredCities!.join(', '),
-            Icons.location_on,
-          ),
-        if (selectedCandidate!.preferredGenders != null &&
-            selectedCandidate!.preferredGenders!.isNotEmpty)
-          _buildPreferenceRow(
-            'Cinsiyetler',
-            selectedCandidate!.preferredGenders!
-                .map((g) => _getGenderDisplayName(g))
-                .join(', '),
-            Icons.person,
-          ),
-      ],
+    final chips = <Widget>[];
+    if (selectedCandidate!.preferredAgeMin != null &&
+        selectedCandidate!.preferredAgeMax != null) {
+      chips.add(_buildPreferenceChip(
+        icon: Icons.calendar_today,
+        label: 'Yaş',
+        value: '${selectedCandidate!.preferredAgeMin} - ${selectedCandidate!.preferredAgeMax}',
+      ));
+    }
+    if (selectedCandidate!.preferredCities != null &&
+        selectedCandidate!.preferredCities!.isNotEmpty) {
+      chips.add(_buildPreferenceChip(
+        icon: Icons.location_on,
+        label: 'Şehirler',
+        value: selectedCandidate!.preferredCities!.join(', '),
+      ));
+    }
+    if (selectedCandidate!.preferredGenders != null &&
+        selectedCandidate!.preferredGenders!.isNotEmpty) {
+      chips.add(_buildPreferenceChip(
+        icon: Icons.person,
+        label: 'Cinsiyet',
+        value: selectedCandidate!.preferredGenders!
+            .map((g) => _getGenderDisplayName(g))
+            .join(', '),
+      ));
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: chips
+            .map((chip) => Padding(
+                  padding: EdgeInsets.only(right: 1.2.w),
+                  child: chip,
+                ))
+            .toList(),
+      ),
     );
   }
 
-  Widget _buildPreferenceRow(String title, String value, IconData icon) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 1.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 16.w,
-            color: AppTheme.lightTheme.primaryColor,
+  Widget _buildPreferenceChip({required IconData icon, required String label, required String value}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 2.5.w, vertical: 0.7.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: AppTheme.lightTheme.primaryColor.withOpacity(0.18),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 2,
+            offset: Offset(0, 1),
           ),
-          SizedBox(width: 2.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                    color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.lightTheme.colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppTheme.lightTheme.primaryColor),
+          SizedBox(width: 0.8.w),
+          Text(
+            '$label: ',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.lightTheme.primaryColor,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.lightTheme.colorScheme.onSurface,
             ),
           ),
         ],

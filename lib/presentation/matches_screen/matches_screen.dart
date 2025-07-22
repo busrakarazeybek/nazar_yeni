@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
-import './widgets/empty_matches_widget.dart';
-import './widgets/match_card_widget.dart';
+import '../../models/match_proposal.dart';
+import '../../services/match_proposal_service.dart';
 
 class MatchesScreen extends StatefulWidget {
   const MatchesScreen({super.key});
@@ -11,204 +12,50 @@ class MatchesScreen extends StatefulWidget {
   State<MatchesScreen> createState() => _MatchesScreenState();
 }
 
-class _MatchesScreenState extends State<MatchesScreen>
-    with TickerProviderStateMixin {
-  late TabController _tabController;
-  int _currentBottomIndex = 1; // Matches tab is active
-  String _selectedFilter = 'All';
-  String _searchQuery = '';
-  bool _isLoading = false;
-  final String _currentUserRole = 'Selector'; // Mock current user role
-
-  // Mock data for matches
-  final List<Map<String, dynamic>> _sentMatches = [
-    {
-      "id": 1,
-      "candidateName": "Ayşe Demir",
-      "candidateAge": 26,
-      "candidateImage":
-          "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg",
-      "status": "pending",
-      "timestamp": DateTime.now().subtract(Duration(hours: 2)),
-      "bio": "Öğretmen, kitap okumayı ve doğa yürüyüşlerini seviyor.",
-      "interests": ["Kitap", "Doğa", "Müzik"],
-    },
-    {
-      "id": 2,
-      "candidateName": "Fatma Özkan",
-      "candidateAge": 28,
-      "candidateImage":
-          "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg",
-      "status": "accepted",
-      "timestamp": DateTime.now().subtract(Duration(days: 1)),
-      "bio": "Mimar, sanat ve tasarımla ilgileniyor.",
-      "interests": ["Sanat", "Tasarım", "Seyahat"],
-    },
-    {
-      "id": 3,
-      "candidateName": "Zeynep Kaya",
-      "candidateAge": 24,
-      "candidateImage":
-          "https://images.pexels.com/photos/1130626/pexels-photo-1130626.jpeg",
-      "status": "rejected",
-      "timestamp": DateTime.now().subtract(Duration(days: 3)),
-      "bio": "Doktor, spor yapmayı ve seyahat etmeyi seviyor.",
-      "interests": ["Spor", "Seyahat", "Tıp"],
-    },
-  ];
-
-  final List<Map<String, dynamic>> _receivedMatches = [
-    {
-      "id": 4,
-      "candidateName": "Mehmet Ali Şen",
-      "candidateAge": 30,
-      "candidateImage":
-          "https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg",
-      "status": "pending",
-      "timestamp": DateTime.now().subtract(Duration(minutes: 30)),
-      "selectorName": "Emine Teyze",
-      "selectorRelation": "Aile Dostu",
-      "bio": "Mühendis, teknoloji ve spor meraklısı.",
-      "interests": ["Teknoloji", "Spor", "Sinema"],
-    },
-    {
-      "id": 5,
-      "candidateName": "Ahmet Yılmaz",
-      "candidateAge": 32,
-      "candidateImage":
-          "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg",
-      "status": "accepted",
-      "timestamp": DateTime.now().subtract(Duration(hours: 5)),
-      "selectorName": "Fatma Hanım",
-      "selectorRelation": "Komşu",
-      "bio": "İş insanı, müzik ve sanat seviyor.",
-      "interests": ["Müzik", "Sanat", "İş"],
-    },
-  ];
+class _MatchesScreenState extends State<MatchesScreen> {
+  bool _isLoading = true;
+  List<MatchProposal> _proposals = [];
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
-      length: _currentUserRole == 'Selector' ? 2 : 1,
-      vsync: this,
-    );
+    _loadMatches();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+  Future<void> _loadMatches() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
 
-  List<Map<String, dynamic>> get _filteredMatches {
-    List<Map<String, dynamic>> matches = [];
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
 
-    if (_currentUserRole == 'Selector') {
-      matches = _tabController.index == 0 ? _sentMatches : _receivedMatches;
-    } else {
-      matches = _receivedMatches;
-    }
-
-    // Apply search filter
-    if (_searchQuery.isNotEmpty) {
-      matches = matches.where((match) {
-        final name = (match['candidateName'] as String).toLowerCase();
-        final selector = (match['selectorName'] as String? ?? '').toLowerCase();
-        final query = _searchQuery.toLowerCase();
-        return name.contains(query) || selector.contains(query);
-      }).toList();
-    }
-
-    // Apply status filter
-    if (_selectedFilter != 'All') {
-      matches = matches.where((match) {
-        return (match['status'] as String).toLowerCase() ==
-            _selectedFilter.toLowerCase();
-      }).toList();
-    }
-
-    return matches;
-  }
-
-  Future<void> _refreshMatches() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate API call
-    await Future.delayed(Duration(seconds: 1));
-
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  void _onMatchAction(int matchId, String action) {
-    setState(() {
-      // Update match status based on action
-      final allMatches = [..._sentMatches, ..._receivedMatches];
-      final matchIndex =
-          allMatches.indexWhere((match) => match['id'] == matchId);
-
-      if (matchIndex != -1) {
-        switch (action) {
-          case 'accept':
-            allMatches[matchIndex]['status'] = 'accepted';
-            break;
-          case 'reject':
-          case 'decline':
-            allMatches[matchIndex]['status'] = 'rejected';
-            break;
-          case 'withdraw':
-            // Remove from sent matches
-            _sentMatches.removeWhere((match) => match['id'] == matchId);
-            break;
-        }
+      if (currentUser == null) {
+        setState(() {
+          _errorMessage = 'Kullanıcı oturumu bulunamadı';
+        });
+        return;
       }
-    });
 
-    // Show feedback
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_getActionMessage(action)),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
+      final matchProposalService = MatchProposalService();
+      final proposals = await matchProposalService.getProposalsForCandidate(
+        currentUser.id,
+      );
 
-  String _getActionMessage(String action) {
-    switch (action) {
-      case 'accept':
-        return 'Eşleşme kabul edildi';
-      case 'reject':
-      case 'decline':
-        return 'Eşleşme reddedildi';
-      case 'withdraw':
-        return 'Eşleşme geri çekildi';
-      default:
-        return 'İşlem tamamlandı';
-    }
-  }
-
-  void _onBottomNavTap(int index) {
-    setState(() {
-      _currentBottomIndex = index;
-    });
-
-    switch (index) {
-      case 0:
-        Navigator.pushNamed(context, '/enhanced-selector-home-screen');
-        break;
-      case 1:
-        // Already on matches screen
-        break;
-      case 2:
-        Navigator.pushNamed(context, '/my-selectors-screen');
-        break;
-      case 3:
-        Navigator.pushNamed(context, '/profile-screen');
-        break;
+      setState(() {
+        _proposals = proposals;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Eşleşmeler yüklenirken hata oluştu: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -217,256 +64,337 @@ class _MatchesScreenState extends State<MatchesScreen>
     return Scaffold(
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppTheme.lightTheme.appBarTheme.backgroundColor,
+        backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
         elevation: 0,
         title: Text(
           'Eşleşmeler',
-          style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
+          style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
           ),
         ),
+        centerTitle: true,
         actions: [
           IconButton(
-            onPressed: () {
-              _showFilterDialog();
-            },
+            onPressed: _loadMatches,
             icon: CustomIconWidget(
-              iconName: 'filter_list',
+              iconName: 'refresh',
               color: AppTheme.lightTheme.primaryColor,
               size: 24,
             ),
           ),
         ],
-        bottom: _currentUserRole == 'Selector'
-            ? TabBar(
-                controller: _tabController,
-                tabs: [
-                  Tab(text: 'Gönderilen'),
-                  Tab(text: 'Alınan'),
-                ],
-                labelColor: AppTheme.lightTheme.primaryColor,
-                unselectedLabelColor: AppTheme.textSecondaryLight,
-                indicatorColor: AppTheme.lightTheme.primaryColor,
-              )
-            : PreferredSize(
-                preferredSize: Size.zero,
-                child: Container(),
-              ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Search Bar
-            Container(
-              margin: EdgeInsets.all(16),
-              child: TextField(
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'İsim veya seçici ara...',
-                  prefixIcon: CustomIconWidget(
-                    iconName: 'search',
-                    color: AppTheme.textSecondaryLight,
-                    size: 20,
+      body: RefreshIndicator(
+        onRefresh: _loadMatches,
+        child: _buildBody(),
+      ),
+      bottomNavigationBar: _buildBottomNavigationBar(),
+    );
+  }
+
+  Widget _buildBody() {
+    final matchedProposals = _proposals
+        .where(
+          (p) =>
+              p.status == AcceptanceStatus.accepted &&
+              p.targetStatus == AcceptanceStatus.accepted,
+        )
+        .toList();
+
+    if (_isLoading) return _buildLoadingScreen();
+    if (_errorMessage != null) return _buildErrorScreen();
+
+    if (matchedProposals.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(6.w),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CustomIconWidget(
+                iconName: 'chat',
+                color: AppTheme.lightTheme.primaryColor,
+                size: 48,
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                'Henüz eşleşme yok',
+                style: AppTheme.lightTheme.textTheme.titleMedium,
+              ),
+              SizedBox(height: 1.h),
+              Text(
+                'Karşılıklı kabul edilen eşleşmeler burada listelenir.',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12.sp),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final currentUser = Provider.of<AuthProvider>(
+      context,
+      listen: false,
+    ).currentUserProfile;
+
+    return ListView.builder(
+      padding: EdgeInsets.all(4.w),
+      itemCount: matchedProposals.length,
+      itemBuilder: (context, index) {
+        final proposal = matchedProposals[index];
+        final isCandidate = proposal.candidateId == currentUser?.id;
+        final partnerName =
+            isCandidate ? proposal.targetCandidateName : proposal.candidateName;
+        final partnerImage = isCandidate
+            ? proposal.targetCandidateImageUrl
+            : proposal.candidateImageUrl;
+        final partnerBio =
+            isCandidate ? proposal.targetCandidateBio : proposal.candidateBio;
+        final matchDate = proposal.updatedAt ?? proposal.createdAt;
+
+        return Container(
+          margin: EdgeInsets.only(bottom: 2.h),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.lightTheme.primaryColor.withAlpha(40),
+                Colors.white,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(18),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 4.w,
+              vertical: 2.h,
+            ),
+            leading: Stack(
+              children: [
+                CircleAvatar(
+                  backgroundImage:
+                      partnerImage != null ? NetworkImage(partnerImage) : null,
+                  radius: 28,
+                  child: partnerImage == null
+                      ? Icon(Icons.person, size: 32)
+                      : null,
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: EdgeInsets.all(0.8.w),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: Icon(Icons.check, color: Colors.white, size: 14),
                   ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppTheme.borderLight,
-                      width: 1,
+                ),
+              ],
+            ),
+            title: Text(
+              partnerName ?? 'Bilinmeyen',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (partnerBio != null && partnerBio.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(top: 0.5.h, bottom: 0.5.h),
+                    child: Text(
+                      partnerBio,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: Colors.grey[700],
+                      ),
                     ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppTheme.borderLight,
-                      width: 1,
+                Row(
+                  children: [
+                    Icon(Icons.favorite, color: Colors.pinkAccent, size: 16),
+                    SizedBox(width: 1.w),
+                    Text(
+                      'Eşleşme: ${_formatMatchDate(matchDate)}',
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        color: Colors.grey[600],
+                      ),
                     ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppTheme.lightTheme.primaryColor,
-                      width: 2,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: AppTheme.lightTheme.colorScheme.surface,
+                  ],
+                ),
+              ],
+            ),
+            trailing: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(
+                  context,
+                  AppRoutes.chatScreen,
+                  arguments: {
+                    'matchId': proposal.id,
+                    'partnerName': partnerName,
+                    'partnerImageUrl': partnerImage,
+                  },
+                );
+              },
+              icon: Icon(Icons.chat),
+              label: Text('Mesajlaş'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.lightTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
-
-            // Content
-            Expanded(
-              child: _currentUserRole == 'Selector'
-                  ? TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildMatchesList(),
-                        _buildMatchesList(),
-                      ],
-                    )
-                  : _buildMatchesList(),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentBottomIndex,
-        onTap: _onBottomNavTap,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppTheme.lightTheme.colorScheme.surface,
-        selectedItemColor: AppTheme.lightTheme.primaryColor,
-        unselectedItemColor: AppTheme.textSecondaryLight,
-        items: [
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'home',
-              color: _currentBottomIndex == 0
-                  ? AppTheme.lightTheme.primaryColor
-                  : AppTheme.textSecondaryLight,
-              size: 24,
-            ),
-            label: 'Ana Sayfa',
           ),
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'favorite',
-              color: _currentBottomIndex == 1
-                  ? AppTheme.lightTheme.primaryColor
-                  : AppTheme.textSecondaryLight,
-              size: 24,
-            ),
-            label: 'Eşleşmeler',
-          ),
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'people',
-              color: _currentBottomIndex == 2
-                  ? AppTheme.lightTheme.primaryColor
-                  : AppTheme.textSecondaryLight,
-              size: 24,
-            ),
-            label: 'Seçicilerim',
-          ),
-          BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'person',
-              color: _currentBottomIndex == 3
-                  ? AppTheme.lightTheme.primaryColor
-                  : AppTheme.textSecondaryLight,
-              size: 24,
-            ),
-            label: 'Profil',
-          ),
-        ],
-      ),
-      floatingActionButton: _currentUserRole == 'Selector'
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/enhanced-selector-home-screen');
-              },
-              backgroundColor: AppTheme.accentColor,
-              child: CustomIconWidget(
-                iconName: 'add',
-                color: AppTheme.textPrimaryLight,
-                size: 24,
-              ),
-            )
-          : null,
-    );
-  }
-
-  Widget _buildMatchesList() {
-    if (_isLoading) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.lightTheme.primaryColor,
-        ),
-      );
-    }
-
-    final matches = _filteredMatches;
-
-    if (matches.isEmpty) {
-      return EmptyMatchesWidget(
-        userRole: _currentUserRole,
-        isFiltered: _searchQuery.isNotEmpty || _selectedFilter != 'All',
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _refreshMatches,
-      color: AppTheme.lightTheme.primaryColor,
-      child: ListView.builder(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        itemCount: matches.length,
-        itemBuilder: (context, index) {
-          final match = matches[index];
-          return MatchCardWidget(
-            match: match,
-            userRole: _currentUserRole,
-            onAction: _onMatchAction,
-            onTap: () {
-              if (match['status'] == 'accepted') {
-                Navigator.pushNamed(context, '/chat-screen');
-              } else {
-                Navigator.pushNamed(
-                    context, '/candidate-profile-detail-screen');
-              }
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  void _showFilterDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(
-            'Filtrele',
-            style: AppTheme.lightTheme.textTheme.titleLarge,
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildFilterOption('All', 'Tümü'),
-              _buildFilterOption('Pending', 'Bekleyen'),
-              _buildFilterOption('Accepted', 'Kabul Edilen'),
-              _buildFilterOption('Rejected', 'Reddedilen'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('İptal'),
-            ),
-          ],
         );
       },
     );
   }
 
-  Widget _buildFilterOption(String value, String label) {
-    return RadioListTile<String>(
-      title: Text(label),
-      value: value,
-      groupValue: _selectedFilter,
-      onChanged: (String? newValue) {
-        setState(() {
-          _selectedFilter = newValue ?? 'All';
-        });
-        Navigator.of(context).pop();
+  String _formatMatchDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    if (difference.inDays > 0) {
+      return '${difference.inDays} gün önce';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} saat önce';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} dakika önce';
+    } else {
+      return 'Az önce';
+    }
+  }
+
+  Widget _buildLoadingScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: AppTheme.lightTheme.primaryColor),
+          SizedBox(height: 2.h),
+          Text(
+            'Eşleşmeler yükleniyor...',
+            style: AppTheme.lightTheme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(6.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CustomIconWidget(
+              iconName: 'error_outline',
+              color: AppTheme.errorColor,
+              size: 64,
+            ),
+            SizedBox(height: 3.h),
+            Text(
+              'Hata',
+              style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+                color: AppTheme.errorColor,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              _errorMessage ?? 'Bilinmeyen hata',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 4.h),
+            ElevatedButton.icon(
+              onPressed: _loadMatches,
+              icon: CustomIconWidget(
+                iconName: 'refresh',
+                color: Colors.white,
+                size: 20,
+              ),
+              label: Text('Tekrar Dene'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigationBar() {
+    return BottomNavigationBar(
+      currentIndex: 1, // Matches tab active
+      onTap: (index) {
+        switch (index) {
+          case 0:
+            Navigator.pushReplacementNamed(context, AppRoutes.candidateHomeScreen);
+            break;
+          case 1:
+            // Already on matches screen
+            break;
+          case 2:
+            Navigator.pushReplacementNamed(context, '/my-selectors-screen');
+            break;
+          case 3:
+            Navigator.pushReplacementNamed(context, '/profile-screen');
+            break;
+        }
       },
-      activeColor: AppTheme.lightTheme.primaryColor,
+      type: BottomNavigationBarType.fixed,
+      backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+      selectedItemColor: AppTheme.lightTheme.colorScheme.primary,
+      unselectedItemColor: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+      elevation: 8,
+      items: [
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: 'home',
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            size: 24,
+          ),
+          label: 'Ana Sayfa',
+        ),
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: 'favorite',
+            color: AppTheme.lightTheme.colorScheme.primary,
+            size: 24,
+          ),
+          label: 'Eşleşmeler',
+        ),
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: 'people',
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            size: 24,
+          ),
+          label: 'Seçicilerim',
+        ),
+        BottomNavigationBarItem(
+          icon: CustomIconWidget(
+            iconName: 'person',
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            size: 24,
+          ),
+          label: 'Profil',
+        ),
+      ],
     );
   }
 }

@@ -5,12 +5,12 @@ import '../../../core/app_export.dart';
 import './enhanced_swipeable_candidate_card_widget.dart';
 import './preferences_context_widget.dart';
 
-class EnhancedPotentialMatchesSection extends StatelessWidget {
+class EnhancedPotentialMatchesSection extends StatefulWidget {
   final List<UserProfile> potentialMatches;
   final UserProfile? selectedCandidate;
   final VoidCallback onRefresh;
   final Function(UserProfile)? onMatchProposal;
-  final Function(UserProfile, bool isRightSwipe)? onCardSwiped; // yeni ekle
+  final Function(UserProfile, bool isRightSwipe)? onCardSwiped;
 
   const EnhancedPotentialMatchesSection({
     super.key,
@@ -22,6 +22,32 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
   });
 
   @override
+  State<EnhancedPotentialMatchesSection> createState() =>
+      _EnhancedPotentialMatchesSectionState();
+}
+
+class _EnhancedPotentialMatchesSectionState
+    extends State<EnhancedPotentialMatchesSection> {
+  UserProfile? currentTopCandidate;
+
+  @override
+  void didUpdateWidget(covariant EnhancedPotentialMatchesSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.potentialMatches.isNotEmpty) {
+      if (currentTopCandidate == null ||
+          widget.potentialMatches.first.id != currentTopCandidate!.id) {
+        setState(() {
+          currentTopCandidate = widget.potentialMatches.first;
+        });
+      }
+    } else {
+      setState(() {
+        currentTopCandidate = null;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
@@ -30,12 +56,9 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
         children: [
           _buildSectionHeader(context),
           SizedBox(height: 2.h),
-
-          // Add preferences context widget
-          PreferencesContextWidget(selectedCandidate: selectedCandidate),
+          PreferencesContextWidget(selectedCandidate: widget.selectedCandidate),
           SizedBox(height: 2.h),
-
-          selectedCandidate == null
+          widget.selectedCandidate == null
               ? _buildSelectionPrompt(context)
               : _buildSwipeableCards(context),
         ],
@@ -45,66 +68,43 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
 
   Widget _buildSectionHeader(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(2.w),
-              decoration: BoxDecoration(
-                color: AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6.w),
-              ),
-              child: CustomIconWidget(
-                iconName: 'group',
-                color: AppTheme.lightTheme.primaryColor,
-                size: 20.w,
-              ),
-            ),
-            SizedBox(width: 3.w),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  selectedCandidate != null
-                      ? 'Tercih Edilen Adaylar'
-                      : 'Potansiyel Eşleşmeler',
-                  style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.lightTheme.colorScheme.onSurface,
-                  ),
-                ),
-                if (selectedCandidate != null)
-                  Text(
-                    '${selectedCandidate!.fullName} için uygun adaylar',
-                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
         Container(
+          padding: EdgeInsets.all(1.2.w),
           decoration: BoxDecoration(
-            color: AppTheme.lightTheme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(8.w),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.shadowLight,
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+            color: AppTheme.lightTheme.primaryColor.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: CustomIconWidget(
+            iconName: 'group',
+            color: AppTheme.lightTheme.primaryColor,
+            size: 18,
+          ),
+        ),
+        SizedBox(width: 1.5.w),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.selectedCandidate != null
+                  ? 'Tercih Edilen Adaylar'
+                  : 'Potansiyel Eşleşmeler',
+              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppTheme.lightTheme.colorScheme.onSurface,
+                fontSize: 15,
               ),
-            ],
-          ),
-          child: IconButton(
-            onPressed: onRefresh,
-            icon: CustomIconWidget(
-              iconName: 'refresh',
-              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-              size: 20.w,
             ),
-          ),
+            if (widget.selectedCandidate != null)
+              Text(
+                '${widget.selectedCandidate!.fullName} için uygun adaylar',
+                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                  color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+          ],
         ),
       ],
     );
@@ -199,17 +199,18 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
   }
 
   Widget _buildSwipeableCards(BuildContext context) {
-    if (potentialMatches.isEmpty) {
+    if (widget.potentialMatches.isEmpty) {
       return _buildEmptyMatches(context);
     }
+
+    final topCandidate = currentTopCandidate ?? widget.potentialMatches.first;
 
     return SizedBox(
       height: 70.h,
       child: Stack(
         children: [
-          // Stack of cards (show up to 3 cards in stack)
-          ...List.generate(potentialMatches.length.clamp(0, 3), (index) {
-            final candidate = potentialMatches[index];
+          ...List.generate(widget.potentialMatches.length.clamp(0, 3), (index) {
+            final candidate = widget.potentialMatches[index];
             final scale = 1.0 - (index * 0.05);
             final offset = index * 8.0;
 
@@ -222,19 +223,28 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
                 scale: scale,
                 child: EnhancedSwipeableCandidateCard(
                   candidate: candidate,
-                  selectedCandidate: selectedCandidate,
+                  selectedCandidate: widget.selectedCandidate,
                   onSwipeRight: index == 0
-                      ? () => onCardSwiped?.call(candidate, true)
+                      ? (c) {
+                          if (widget.onCardSwiped != null) {
+                            widget.onCardSwiped!(c, true);
+                          }
+                          _updateTopCandidate();
+                        }
                       : null,
                   onSwipeLeft: index == 0
-                      ? () => onCardSwiped?.call(candidate, false)
+                      ? (c) {
+                          if (widget.onCardSwiped != null) {
+                            widget.onCardSwiped!(c, false);
+                          }
+                          _updateTopCandidate();
+                        }
                       : null,
                   isTopCard: index == 0,
                 ),
               ),
             );
           }),
-          // Action buttons at the bottom
           Positioned(
             bottom: 2.h,
             left: 0,
@@ -256,8 +266,12 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
                   ),
                   child: FloatingActionButton(
                     heroTag: "pass",
-                    onPressed: () =>
-                        onCardSwiped?.call(potentialMatches.first, false),
+                    onPressed: () {
+                      if (topCandidate != null && widget.onCardSwiped != null) {
+                        widget.onCardSwiped!(topCandidate, false);
+                      }
+                      _updateTopCandidate();
+                    },
                     backgroundColor: Colors.red,
                     elevation: 0,
                     child: CustomIconWidget(
@@ -284,7 +298,7 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
                   child: FloatingActionButton(
                     heroTag: "info",
                     mini: true,
-                    onPressed: () {}, // info için fonksiyon eklenebilir
+                    onPressed: () {},
                     backgroundColor: AppTheme.lightTheme.primaryColor,
                     elevation: 0,
                     child: CustomIconWidget(
@@ -308,8 +322,12 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
                   ),
                   child: FloatingActionButton(
                     heroTag: "like",
-                    onPressed: () =>
-                        onCardSwiped?.call(potentialMatches.first, true),
+                    onPressed: () {
+                      if (topCandidate != null && widget.onCardSwiped != null) {
+                        widget.onCardSwiped!(topCandidate, true);
+                      }
+                      _updateTopCandidate();
+                    },
                     backgroundColor: Colors.green,
                     elevation: 0,
                     child: CustomIconWidget(
@@ -325,6 +343,20 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _updateTopCandidate() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.potentialMatches.isNotEmpty) {
+        setState(() {
+          currentTopCandidate = widget.potentialMatches.first;
+        });
+      } else {
+        setState(() {
+          currentTopCandidate = null;
+        });
+      }
+    });
   }
 
   void _showCandidateDetails(BuildContext context, UserProfile candidate) {
@@ -469,7 +501,7 @@ class EnhancedPotentialMatchesSection extends StatelessWidget {
             ),
             SizedBox(height: 3.h),
             ElevatedButton.icon(
-              onPressed: onRefresh,
+              onPressed: widget.onRefresh,
               icon: CustomIconWidget(
                 iconName: 'refresh',
                 color: Colors.white,

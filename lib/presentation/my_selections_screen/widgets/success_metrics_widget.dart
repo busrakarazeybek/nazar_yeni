@@ -21,23 +21,28 @@ class SuccessMetricsWidget extends StatelessWidget {
         totalProposals > 0 ? (successfulMatches / totalProposals) * 100 : 0.0;
 
     return Container(
-      margin: EdgeInsets.all(4.w),
-      padding: EdgeInsets.all(4.w),
+      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+      padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppTheme.lightTheme.primaryColor,
-            AppTheme.lightTheme.primaryColor.withAlpha(204),
+            AppTheme.lightTheme.primaryColor.withAlpha(230),
+            AppTheme.lightTheme.primaryColor.withAlpha(180),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.lightTheme.primaryColor.withAlpha(100),
+          width: 0.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.lightTheme.primaryColor.withAlpha(77),
-            blurRadius: 10,
+            color: AppTheme.lightTheme.primaryColor.withAlpha(30),
+            blurRadius: 12,
             offset: Offset(0, 4),
+            spreadRadius: 1,
           ),
         ],
       ),
@@ -47,11 +52,11 @@ class SuccessMetricsWidget extends StatelessWidget {
             'Başarı İstatistikleri',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 14.sp,
-              fontWeight: FontWeight.bold,
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          SizedBox(height: 3.h),
+          SizedBox(height: 2.h),
           Row(
             children: [
               _buildMetricCard(
@@ -59,13 +64,13 @@ class SuccessMetricsWidget extends StatelessWidget {
                 title: 'Toplam Öneri',
                 value: totalProposals.toString(),
               ),
-              SizedBox(width: 4.w),
+              SizedBox(width: 2.w),
               _buildMetricCard(
                 icon: 'check_circle',
                 title: 'Başarılı Eşleşme',
                 value: successfulMatches.toString(),
               ),
-              SizedBox(width: 4.w),
+              SizedBox(width: 2.w),
               _buildMetricCard(
                 icon: 'schedule',
                 title: 'Beklemede',
@@ -73,7 +78,7 @@ class SuccessMetricsWidget extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 3.h),
+          SizedBox(height: 2.h),
           _buildSuccessRateIndicator(successRate),
         ],
       ),
@@ -87,35 +92,40 @@ class SuccessMetricsWidget extends StatelessWidget {
   }) {
     return Expanded(
       child: Container(
-        padding: EdgeInsets.all(3.w),
+        padding: EdgeInsets.symmetric(vertical: 2.h, horizontal: 1.w),
         decoration: BoxDecoration(
-          color: Colors.white.withAlpha(51),
+          color: Colors.white.withAlpha(77),
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withAlpha(128),
+            width: 0.3,
+          ),
         ),
         child: Column(
           children: [
             CustomIconWidget(
               iconName: icon,
               color: Colors.white,
-              size: 24.w,
+              size: 16,
             ),
-            SizedBox(height: 1.h),
+            SizedBox(height: 0.5.h),
             Text(
               value,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 16.sp,
+                fontSize: 14.sp,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 0.5.h),
+            SizedBox(height: 0.3.h),
             Text(
               title,
               style: TextStyle(
                 color: Colors.white.withAlpha(230),
-                fontSize: 9.sp,
+                fontSize: 8.sp,
               ),
               textAlign: TextAlign.center,
+              maxLines: 2,
             ),
           ],
         ),
@@ -125,17 +135,21 @@ class SuccessMetricsWidget extends StatelessWidget {
 
   Widget _buildSuccessRateIndicator(double successRate) {
     return Container(
-      padding: EdgeInsets.all(3.w),
+      padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(26),
+        color: Colors.white.withAlpha(51),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withAlpha(128),
+          width: 0.3,
+        ),
       ),
       child: Row(
         children: [
           CustomIconWidget(
             iconName: 'trending_up',
             color: Colors.white,
-            size: 24.w,
+            size: 16,
           ),
           SizedBox(width: 3.w),
           Expanded(
@@ -146,26 +160,26 @@ class SuccessMetricsWidget extends StatelessWidget {
                   'Başarı Oranı',
                   style: TextStyle(
                     color: Colors.white.withAlpha(230),
-                    fontSize: 11.sp,
+                    fontSize: 9.sp,
                   ),
                 ),
-                SizedBox(height: 1.h),
+                SizedBox(height: 0.5.h),
                 Row(
                   children: [
                     Expanded(
                       child: LinearProgressIndicator(
                         value: successRate / 100,
-                        backgroundColor: Colors.white.withAlpha(77),
+                        backgroundColor: Colors.white.withAlpha(102),
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        minHeight: 6,
+                        minHeight: 5,
                       ),
                     ),
-                    SizedBox(width: 3.w),
+                    SizedBox(width: 2.w),
                     Text(
                       '${successRate.toInt()}%',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 14.sp,
+                        fontSize: 12.sp,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
