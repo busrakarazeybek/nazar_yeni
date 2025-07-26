@@ -37,15 +37,26 @@ class ChatHeaderWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+      padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
       decoration: BoxDecoration(
-        color: AppTheme.lightTheme.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color:
-                AppTheme.lightTheme.colorScheme.outline.withValues(alpha: 0.2),
-            width: 1,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            Color(0xFFF8F9FA),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 10,
+            offset: Offset(0, 2),
           ),
+        ],
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
         ),
       ),
       child: Row(
@@ -54,16 +65,20 @@ class ChatHeaderWidget extends StatelessWidget {
           GestureDetector(
             onTap: onBackPressed,
             child: Container(
-              padding: EdgeInsets.all(2.w),
+              padding: EdgeInsets.all(1.5.w),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
               child: CustomIconWidget(
                 iconName: 'arrow_back',
-                color: AppTheme.lightTheme.colorScheme.onSurface,
-                size: 24,
+                color: Colors.grey[700]!,
+                size: 18,
               ),
             ),
           ),
 
-          SizedBox(width: 2.w),
+          SizedBox(width: 1.5.w),
 
           // Profile Image with Online Status
           Stack(
@@ -73,18 +88,33 @@ class ChatHeaderWidget extends StatelessWidget {
                 height: 12.w,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppTheme.lightTheme.colorScheme.outline
-                        .withValues(alpha: 0.3),
-                    width: 1,
+                  gradient: LinearGradient(
+                    colors: [
+                      Color(0xFF6C63FF),
+                      Color(0xFF9C27B0),
+                    ],
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0xFF6C63FF).withAlpha(51),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: ClipOval(
-                  child: CustomImageWidget(
-                    imageUrl: matchPartner['profileImage'] ?? '',
-                    width: 12.w,
-                    height: 12.w,
-                    fit: BoxFit.cover,
+                padding: EdgeInsets.all(0.5.w),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: ClipOval(
+                    child: CustomImageWidget(
+                      imageUrl: matchPartner['profileImage'] ?? '',
+                      width: 11.w,
+                      height: 11.w,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),
@@ -96,19 +126,26 @@ class ChatHeaderWidget extends StatelessWidget {
                     width: 3.w,
                     height: 3.w,
                     decoration: BoxDecoration(
-                      color: AppTheme.successColor,
+                      color: Color(0xFF00E676),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: AppTheme.lightTheme.colorScheme.surface,
-                        width: 1,
+                        color: Colors.white,
+                        width: 2,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0xFF00E676).withAlpha(77),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
                     ),
                   ),
                 ),
             ],
           ),
 
-          SizedBox(width: 3.w),
+          SizedBox(width: 2.w),
 
           // Name and Status
           Expanded(
@@ -117,22 +154,41 @@ class ChatHeaderWidget extends StatelessWidget {
               children: [
                 Text(
                   matchPartner['name'] ?? 'Bilinmeyen Kullanıcı',
-                  style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey[800],
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 SizedBox(height: 0.5.h),
-                Text(
-                  _getLastSeenText(),
-                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                    color: matchPartner['isOnline'] == true
-                        ? AppTheme.successColor
-                        : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Container(
+                      width: 1.5.w,
+                      height: 1.5.w,
+                      decoration: BoxDecoration(
+                        color: matchPartner['isOnline'] == true
+                            ? Color(0xFF00E676)
+                            : Colors.grey[400],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    SizedBox(width: 1.5.w),
+                    Text(
+                      _getLastSeenText(),
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.w500,
+                        color: matchPartner['isOnline'] == true
+                            ? Color(0xFF00E676)
+                            : Colors.grey[600],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -142,11 +198,15 @@ class ChatHeaderWidget extends StatelessWidget {
           GestureDetector(
             onTap: onMorePressed,
             child: Container(
-              padding: EdgeInsets.all(2.w),
+              padding: EdgeInsets.all(1.5.w),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
               child: CustomIconWidget(
                 iconName: 'more_vert',
-                color: AppTheme.lightTheme.colorScheme.onSurface,
-                size: 24,
+                color: Colors.grey[700]!,
+                size: 18,
               ),
             ),
           ),

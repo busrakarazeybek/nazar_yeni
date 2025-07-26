@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
+import '../../models/match_proposal.dart';
+import '../../services/match_proposal_service.dart';
 import './widgets/interests_section_widget.dart';
 import './widgets/personal_info_section_widget.dart';
 import './widgets/profile_header_widget.dart';
@@ -21,6 +24,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = false;
   final String _userRole =
       'Candidate'; // Mock role - can be 'Selector' or 'Candidate'
+  int _newMatchesCount = 0;
+  Map<String, dynamic> userData = {};
 
   // Mock user data
   final Map<String, dynamic> _userData = {
@@ -57,11 +62,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
     "Tarih",
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadMatchesCount();
+  }
+
+  Future<void> _loadMatchesCount() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null && currentUser.role == UserRole.candidate) {
+        final prefs = await SharedPreferences.getInstance();
+        final hasViewedMatches = prefs.getBool('hasViewedMatches_${currentUser.id}') ?? false;
+        
+        if (!hasViewedMatches) {
+          final matchProposalService = MatchProposalService();
+          final proposals = await matchProposalService.getProposalsForCandidate(currentUser.id);
+          
+          final matchedCount = proposals.where((p) => 
+            p.status == AcceptanceStatus.accepted && 
+            p.targetStatus == AcceptanceStatus.accepted
+          ).length;
+          
+          setState(() {
+            _newMatchesCount = matchedCount;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading matches count: $e');
+    }
+  }
+
+  Future<void> _markMatchesAsViewed() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasViewedMatches_${currentUser.id}', true);
+        
+        setState(() {
+          _newMatchesCount = 0;
+        });
+      }
+    } catch (e) {
+      print('Error marking matches as viewed: $e');
+    }
+  }
+
   List<BottomNavigationBarItem> _buildBottomNavItems() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final userProfile = authProvider.currentUserProfile;
     final isSelector = userProfile?.role == UserRole.selector;
-    print('DEBUG Profile Screen: User role: ${userProfile?.role}, isSelector: $isSelector');
+    print(
+        'DEBUG Profile Screen: User role: ${userProfile?.role}, isSelector: $isSelector');
 
     return [
       BottomNavigationBarItem(
@@ -75,12 +133,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
         label: 'Ana Sayfa',
       ),
       BottomNavigationBarItem(
-        icon: CustomIconWidget(
-          iconName: isSelector ? 'list' : 'favorite',
-          color: _currentIndex == 1
-              ? AppTheme.lightTheme.primaryColor
-              : AppTheme.textSecondaryLight,
-          size: 24,
+        icon: Stack(
+          children: [
+            CustomIconWidget(
+              iconName: isSelector ? 'list' : 'favorite',
+              color: _currentIndex == 1
+                  ? AppTheme.lightTheme.primaryColor
+                  : AppTheme.textSecondaryLight,
+              size: 24,
+            ),
+            if (!isSelector && _newMatchesCount > 0)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  padding: EdgeInsets.all(1.w),
+                  decoration: BoxDecoration(
+                    color: AppTheme.errorColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white, width: 1),
+                  ),
+                  constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text(
+                    '$_newMatchesCount',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
         ),
         label: isSelector ? 'Önerilerim' : 'Eşleşmeler',
       ),
@@ -152,11 +237,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (userProfile?.role == UserRole.selector) {
           Navigator.pushReplacementNamed(context, '/my-selections-screen');
         } else {
+          // Badge'i kalıcı olarak sıfırla ve matches screen'e git
+          _markMatchesAsViewed();
           Navigator.pushReplacementNamed(context, '/matches-screen');
         }
         break;
       case 2:
-        // Role-based navigation for third tab  
+        // Role-based navigation for third tab
         final authProvider2 = Provider.of<AuthProvider>(context, listen: false);
         final userProfile2 = authProvider2.currentUserProfile;
         if (userProfile2?.role == UserRole.selector) {
@@ -215,22 +302,83 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _isLoading = true;
     });
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final authService = AuthService();
+        
+        // Yaş validasyonu
+        int? ageMin = userData['preferredAgeMin'] as int?;
+        int? ageMax = userData['preferredAgeMax'] as int?;
+        
+        // Geçersiz yaş değerlerini null yap
+        if (ageMin != null && (ageMin < 18 || ageMin > 100)) {
+          ageMin = null;
+        }
+        if (ageMax != null && (ageMax < 18 || ageMax > 100)) {
+          ageMax = null;
+        }
+        
+        // MinAge > MaxAge durumunu kontrol et
+        if (ageMin != null && ageMax != null && ageMin > ageMax) {
+          // Swap values
+          final temp = ageMin;
+          ageMin = ageMax;
+          ageMax = temp;
+        }
+        
+        // userData Map'inden değerleri al ve updateUserProfile'a gönder
+        await authService.updateUserProfile(
+          userId: currentUser.id,
+          fullName: userData['name'] as String?,
+          age: userData['age'] as int?,
+          bio: userData['bio'] as String?,
+          interests: (userData['interests'] as List?)?.cast<String>(),
+          location: currentUser.location, // mevcut location'ı koru
+          profession: currentUser.profession, // mevcut profession'ı koru
+          imageUrl: userData['profileImage'] as String?,
+          phone: currentUser.phone, // mevcut phone'u koru
+          preferredAgeMin: ageMin,
+          preferredAgeMax: ageMax,
+          preferredCities: (userData['preferredCities'] as List?)?.cast<String>(),
+          preferredInterests: (userData['preferredInterests'] as List?)?.cast<String>(),
+          preferredGenders: (userData['preferredGenders'] as List?)?.cast<String>(),
+        );
+        
+        // AuthProvider'ı yenile
+        await authProvider.refreshUserProfile();
+      }
 
-    setState(() {
-      _isLoading = false;
-      _hasUnsavedChanges = false;
-    });
+      setState(() {
+        _isLoading = false;
+        _hasUnsavedChanges = false;
+      });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Profil başarıyla güncellendi'),
-          backgroundColor: AppTheme.successColor,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Profil başarıyla güncellendi'),
+            backgroundColor: AppTheme.successColor,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Profil güncelleme hatası: $e'),
+            backgroundColor: AppTheme.errorColor,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -302,18 +450,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    final userData = {
-      "id": userProfile.id,
-      "name": userProfile.fullName,
-      "age": userProfile.age,
-      "bio": userProfile.bio ?? '',
-      "profileImage": userProfile.imageUrl,
-      "interests": userProfile.interests ?? [],
-      "notificationsEnabled": true, // örnek
-      "language": "Türkçe", // örnek
-      "searchRadius": 50, // örnek
-      "privacyLevel": "Orta", // örnek
-    };
+    // userData'yı sadece boşsa initialize et
+    if (userData.isEmpty) {
+      userData = {
+        "id": userProfile.id,
+        "name": userProfile.fullName,
+        "age": userProfile.age,
+        "bio": userProfile.bio ?? '',
+        "profileImage": userProfile.imageUrl,
+        "interests": userProfile.interests ?? [],
+        // Eşleşme tercihleri - database'den çek
+        "preferredAgeMin": userProfile.preferredAgeMin,
+        "preferredAgeMax": userProfile.preferredAgeMax,
+        "preferredCities": userProfile.preferredCities ?? [],
+        "preferredInterests": userProfile.preferredInterests ?? [],
+        "preferredGenders": userProfile.preferredGenders ?? [],
+        "notificationsEnabled": true, // örnek
+        "language": "Türkçe", // örnek
+        "searchRadius": 50, // örnek
+        "privacyLevel": "Orta", // örnek
+      };
+    }
 
     return WillPopScope(
       onWillPop: () async {

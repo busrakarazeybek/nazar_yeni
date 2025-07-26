@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'dart:async';
 
 import '../../core/app_export.dart';
 import '../../models/message.dart';
-import '../../providers/match_provider.dart';
+import '../../services/chat_service.dart';
 import './widgets/chat_header_widget.dart';
 import './widgets/chat_input_widget.dart';
-import './widgets/message_bubble_widget.dart';
+import './widgets/modern_message_bubble_widget.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? matchId;
@@ -20,59 +21,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _messageController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
+  final ChatService _chatService = ChatService();
+  
   bool _isTyping = false;
-  late final String? _matchId;
-  late final String? _currentUserId;
+  String? _currentUserId;
+  Map<String, dynamic>? _matchPartner;
+  String? _matchId;
 
-  // Supabase client
-  final SupabaseClient _client = Supabase.instance.client;
-
-  // Mesaj gönder
-  Future<void> sendMessage({
-    required String matchId,
-    required String senderId,
-    required String content,
-  }) async {
-    await _client.from('messages').insert({
-      'match_id': matchId,
-      'sender_id': senderId,
-      'content': content,
-      'is_read': false,
-    });
-  }
-
-  // Mesajları çek (en yeni 50 mesaj)
-  Future<List<Message>> fetchMessages(String matchId) async {
-    final response = await _client
-        .from('messages')
-        .select('*, sender:user_profiles!sender_id(*)')
-        .eq('match_id', matchId)
-        .order('created_at', ascending: true)
-        .limit(50);
-    return (response as List).map((json) => Message.fromJson(json)).toList();
-  }
-
-  // Gerçek zamanlı mesaj stream'i
-  Stream<List<Message>> subscribeToMessages(String matchId) {
-    final stream = _client
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('match_id', matchId)
-        .order('created_at', ascending: true)
-        .limit(50);
-    return stream.map((event) =>
-        (event as List).map((json) => Message.fromJson(json)).toList());
-  }
-
-  // Mock match partner data
-  final Map<String, dynamic> _matchPartner = {
-    "id": 1,
-    "name": "Ayşe Demir",
-    "profileImage":
-        "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
-    "isOnline": true,
-    "lastSeen": DateTime.now().subtract(const Duration(minutes: 2)),
-  };
 
   @override
   void initState() {
@@ -81,7 +36,21 @@ class _ChatScreenState extends State<ChatScreen> {
     // Kullanıcı id'sini AuthProvider'dan al
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _currentUserId = authProvider.currentUser?.id;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkMatchStatus());
+    
+    // Navigation arguments'dan partner bilgisini al
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      _matchPartner = {
+        "id": args?['partnerId'] ?? '',
+        "name": args?['partnerName'] ?? 'Bilinmeyen Kullanıcı',
+        "profileImage": args?['partnerImageUrl'] ?? '',
+        "isOnline": true, // TODO: Implement real online status
+        "lastSeen": DateTime.now().subtract(const Duration(minutes: 2)),
+      };
+      setState(() {}); // Refresh UI with partner data
+      _checkMatchStatus();
+    });
+    
     _messageFocusNode.addListener(_onFocusChange);
   }
 
@@ -111,26 +80,46 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Send message function
   Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isEmpty ||
-        _matchId == null ||
-        _currentUserId == null) {
+    final messageText = _messageController.text.trim();
+    
+    if (messageText.isEmpty || _matchId == null || _currentUserId == null) {
       return;
     }
-    final content = _messageController.text.trim();
-    _messageController.clear();
-    setState(() {
-      _isTyping = false;
-    });
-    await sendMessage(
-      matchId: _matchId,
-      senderId: _currentUserId,
-      content: content,
-    );
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollToBottom();
-    });
+
+    try {
+      // Clear the input immediately for better UX
+      _messageController.clear();
+      
+      // Get or create conversation
+      final conversationId = await _chatService.getOrCreateConversation(_matchId!);
+      
+      // Send message
+      await _chatService.sendMessage(
+        conversationId: conversationId,
+        senderId: _currentUserId!,
+        content: messageText,
+      );
+
+      // Scroll to bottom after sending
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
+    } catch (e) {
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mesaj gönderilemedi: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      
+      // Restore the message text if sending failed
+      _messageController.text = messageText;
+    }
   }
+
 
   void _onMessageLongPress(Map<String, dynamic> message) {
     showModalBottomSheet(
@@ -347,7 +336,7 @@ class _ChatScreenState extends State<ChatScreen> {
           style: AppTheme.lightTheme.textTheme.titleLarge,
         ),
         content: Text(
-          '${_matchPartner['name']} kullanıcısını engellemek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+          '${_matchPartner?['name'] ?? 'Bu'} kullanıcısını engellemek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
           style: AppTheme.lightTheme.textTheme.bodyMedium,
         ),
         actions: [
@@ -483,15 +472,20 @@ class _ChatScreenState extends State<ChatScreen> {
     // Add pagination logic here
   }
 
-  void _checkMatchStatus() {
+  void _checkMatchStatus() async {
     if (widget.matchId == null) {
       _showNotAllowedAndPop('Eşleşme bulunamadı.');
       return;
     }
-    final matchProvider = Provider.of<MatchProvider>(context, listen: false);
-    final match = matchProvider.getMatchById(widget.matchId!);
-    if (match == null || !match.isMatched) {
-      _showNotAllowedAndPop('Sadece eşleşmiş adaylarla mesajlaşabilirsiniz.');
+    
+    try {
+      final canSend = await _chatService.canSendMessage(widget.matchId!, _currentUserId!);
+      
+      if (!canSend) {
+        _showNotAllowedAndPop('Sadece eşleşmiş adaylarla mesajlaşabilirsiniz.');
+      }
+    } catch (e) {
+      _showNotAllowedAndPop('Eşleşme durumu kontrol edilemedi.');
     }
   }
 
@@ -506,6 +500,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading while partner data is being loaded
+    if (_matchPartner == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       body: SafeArea(
@@ -513,8 +515,7 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             // Chat Header
             ChatHeaderWidget(
-              matchPartner:
-                  _matchPartner, // TODO: partner bilgisini dinamik yap
+              matchPartner: _matchPartner!,
               onBackPressed: () => Navigator.pop(context),
               onMorePressed: _showUserOptions,
             ),
@@ -523,7 +524,7 @@ class _ChatScreenState extends State<ChatScreen> {
               child: _matchId == null
                   ? Center(child: Text('Eşleşme bulunamadı'))
                   : StreamBuilder<List<Message>>(
-                      stream: subscribeToMessages(_matchId),
+                      stream: _chatService.streamMessagesForMatch(_matchId!),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
@@ -538,23 +539,33 @@ class _ChatScreenState extends State<ChatScreen> {
                         }
                         WidgetsBinding.instance
                             .addPostFrameCallback((_) => _scrollToBottom());
-                        return ListView.builder(
-                          controller: _scrollController,
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 4.w, vertical: 1.h),
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final message = messages[index];
-                            return MessageBubbleWidget(
-                              message: {
-                                'isSent': message.senderId == _currentUserId,
-                                'isRead': message.isRead,
-                                'timestamp': message.createdAt,
-                                'message': message.content,
-                              },
-                              onLongPress: () {},
-                            );
-                          },
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0xFFF8F9FA),
+                                Color(0xFFE9ECEF).withAlpha(51),
+                              ],
+                            ),
+                          ),
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            padding: EdgeInsets.symmetric(vertical: 2.h),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final message = messages[index];
+                              final isMe = message.senderId == _currentUserId;
+                              return ModernMessageBubbleWidget(
+                                message: message,
+                                isMe: isMe,
+                                showAvatar: true,
+                                partnerImageUrl: _matchPartner?['profileImage'],
+                                onLongPress: () {},
+                              );
+                            },
+                          ),
                         );
                       },
                     ),

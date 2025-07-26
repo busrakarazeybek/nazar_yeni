@@ -17,6 +17,7 @@ class MatchProposal {
   final String targetCandidateId;
   final AcceptanceStatus status;
   final AcceptanceStatus targetStatus;
+  final AcceptanceStatus selectorStatus;
   final MatchProposalStatus statusEnum;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -54,6 +55,7 @@ class MatchProposal {
     required this.targetCandidateId,
     required this.status,
     required this.targetStatus,
+    required this.selectorStatus,
     required this.statusEnum,
     required this.createdAt,
     this.updatedAt,
@@ -76,6 +78,7 @@ class MatchProposal {
       targetCandidateId: json['target_candidate_id'] as String,
       status: _parseAcceptanceStatus(json['status'] as String?),
       targetStatus: _parseAcceptanceStatus(json['target_status'] as String?),
+      selectorStatus: _parseAcceptanceStatus(json['selector_status'] as String?),
       statusEnum: _parseMatchProposalStatus(
           json['status'] as String?, json['target_status'] as String?),
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -105,6 +108,7 @@ class MatchProposal {
       'target_candidate_id': targetCandidateId,
       'status': status.toString().split('.').last,
       'target_status': targetStatus.toString().split('.').last,
+      'selector_status': selectorStatus.toString().split('.').last,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
       'estimated_response_time': estimatedResponseTime?.toIso8601String(),
@@ -229,6 +233,7 @@ class MatchProposal {
   MatchProposal copyWith({
     AcceptanceStatus? status,
     AcceptanceStatus? targetStatus,
+    AcceptanceStatus? selectorStatus,
     MatchProposalStatus? statusEnum,
     DateTime? updatedAt,
     DateTime? estimatedResponseTime,
@@ -240,6 +245,7 @@ class MatchProposal {
       targetCandidateId: targetCandidateId,
       status: status ?? this.status,
       targetStatus: targetStatus ?? this.targetStatus,
+      selectorStatus: selectorStatus ?? this.selectorStatus,
       statusEnum: statusEnum ?? this.statusEnum,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

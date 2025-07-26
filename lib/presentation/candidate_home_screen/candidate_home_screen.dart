@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import '../../models/match_proposal.dart';
 import '../../services/match_proposal_service.dart';
+import '../../widgets/match_celebration_dialog.dart';
 import './widgets/suggested_candidates_section_widget.dart';
 
 class CandidateHomeScreen extends StatefulWidget {
@@ -21,17 +24,36 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   UserProfile? _selectedSelector;
   String? _errorMessage;
   late TabController _tabController;
+  int _newMatchesCount = 0;
+  late AnimationController _selectionAnimationController;
+  late Animation<double> _selectionAnimation;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _initializeAnimations();
     _loadData();
+  }
+
+  void _initializeAnimations() {
+    _selectionAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _selectionAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _selectionAnimationController,
+        curve: Curves.elasticOut,
+      ),
+    );
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _selectionAnimationController.dispose();
     super.dispose();
   }
 
@@ -75,9 +97,27 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
         }
       }
 
+      // Yeni eşleşmeleri say
+      final matchedProposals = proposals.where((p) => 
+        p.status == AcceptanceStatus.accepted && 
+        p.targetStatus == AcceptanceStatus.accepted
+      ).toList();
+      
+      // SharedPreferences ile badge durumunu kontrol et
+      final prefs = await SharedPreferences.getInstance();
+      final hasViewedMatches = prefs.getBool('hasViewedMatches_${currentUser.id}') ?? false;
+      
       setState(() {
         _proposals = proposals;
         _selectors = selectors;
+        
+        // Badge'i sadece görüntülenmediyse göster
+        if (!hasViewedMatches) {
+          _newMatchesCount = matchedProposals.length;
+        } else {
+          _newMatchesCount = 0;
+        }
+        
         // Auto-select first selector if available
         if (_selectors.isNotEmpty && _selectedSelector == null) {
           _selectedSelector = _selectors.first;
@@ -94,14 +134,52 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     }
   }
 
+  Future<void> _markMatchesAsViewed() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasViewedMatches_${currentUser.id}', true);
+        
+        setState(() {
+          _newMatchesCount = 0;
+        });
+      }
+    } catch (e) {
+      print('Error marking matches as viewed: $e');
+    }
+  }
+
   List<MatchProposal> get _filteredProposals {
     if (_selectedSelector == null) return [];
+    
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUserProfile;
+    if (currentUser == null) return [];
+    
     return _proposals
         .where(
-          (p) =>
-              p.selectorId == _selectedSelector!.id &&
-              p.status == AcceptanceStatus.pending &&
-              p.targetStatus == AcceptanceStatus.pending,
+          (p) {
+            // Only show proposals from the selected selector
+            if (p.selectorId != _selectedSelector!.id) return false;
+            
+            // Don't show if selector has rejected the proposal
+            if (p.selectorStatus == AcceptanceStatus.rejected) return false;
+            
+            // Determine if current user is the candidate or target candidate
+            if (p.candidateId == currentUser.id) {
+              // Current user is the first candidate - only show if they haven't responded
+              return p.status == AcceptanceStatus.pending;
+            } else if (p.targetCandidateId == currentUser.id) {
+              // Current user is the target candidate - only show if they haven't responded
+              return p.targetStatus == AcceptanceStatus.pending;
+            }
+            
+            // Current user is not part of this proposal
+            return false;
+          },
         )
         .toList();
   }
@@ -179,8 +257,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 ...List.generate(requests.length, (i) {
                   final req = requests[i];
                   final fromUser = userProfiles[i];
-                  final fromUserName =
-                      fromUser.fullName ?? req['from_user_id'];
+                  final fromUserName = fromUser.fullName ?? req['from_user_id'];
                   return Card(
                     child: ListTile(
                       title: Text(
@@ -243,7 +320,6 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           tabs: [
             Tab(text: 'Seçicilerim'),
             Tab(text: 'Tüm Öneriler'),
-            Tab(text: 'Eşleşmeler'),
           ],
         ),
       ),
@@ -254,7 +330,6 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           children: [
             _buildBody(), // Seçicilerim sekmesi
             _buildAllProposalsBody(), // Tüm öneriler sekmesi
-            _buildMatchesBody(), // Eşleşmeler sekmesi
           ],
         ),
       ),
@@ -278,9 +353,10 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       padding: EdgeInsets.all(4.w),
       children: [
         if (currentUser != null) _buildIncomingRequestsSection(currentUser.id),
-        if (_selectors.isEmpty)
+        // Only show empty screen if not loading AND selectors are actually empty
+        if (!_isLoading && _selectors.isEmpty)
           _buildEmptySelectorsScreen()
-        else ...[
+        else if (!_isLoading && _selectors.isNotEmpty) ...[
           // My Selectors Section with responsive layout
           _buildMySelectorsSection(),
           SizedBox(height: 3.h),
@@ -327,23 +403,15 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                             size: 5.w,
                           ),
                         ),
-                        SizedBox(width: 3.w),
+                        SizedBox(width: 2.w),
                         Text(
-                          'Benim Görücülerim',
-                          style: AppTheme.lightTheme.textTheme.titleLarge
-                              ?.copyWith(
+                          'Kimler beni seçiyor?',
+                          style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: AppTheme.lightTheme.primaryColor,
+                            color: AppTheme.lightTheme.colorScheme.onSurface,
                           ),
                         ),
                       ],
-                    ),
-                    SizedBox(height: 0.5.h),
-                    Text(
-                      '${_selectors.length} aktif görücü',
-                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSecondaryLight,
-                      ),
                     ),
                   ],
                 ),
@@ -351,9 +419,17 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               _buildAddSelectorButton(),
             ],
           ),
-          SizedBox(height: 2.h),
+          SizedBox(height: 1.2.h),
           // Selectors horizontal list
-          _buildSelectorsHorizontalList(),
+          AnimatedBuilder(
+            animation: _selectionAnimation,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _selectionAnimation.value,
+                child: _buildSelectorsHorizontalList(),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -408,10 +484,11 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildSelectorsHorizontalList() {
     return SizedBox(
-      height: 32.w,
+      height: 15.h, // Enhanced selector style height
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: BouncingScrollPhysics(),
+        padding: EdgeInsets.symmetric(horizontal: 4.w),
         itemCount: _selectors.length,
         itemBuilder: (context, index) {
           final selector = _selectors[index];
@@ -419,13 +496,149 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           final pendingCount =
               _getPendingCountsForSelectors()[selector.id] ?? 0;
 
-          return _buildSelectorCard(
+          return _buildEnhancedSelectorCard(
             selector: selector,
             isSelected: isSelected,
             pendingCount: pendingCount,
             onTap: () => _handleSelectorSelection(selector),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildEnhancedSelectorCard({
+    required UserProfile selector,
+    required bool isSelected,
+    required int pendingCount,
+    required VoidCallback onTap,
+  }) {
+    return AnimatedContainer(
+      duration: Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      margin: EdgeInsets.symmetric(horizontal: 1.w),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              children: [
+                AnimatedContainer(
+                  duration: Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  width: isSelected ? 22.w : 20.w,
+                  height: isSelected ? 22.w : 20.w,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? AppTheme.lightTheme.primaryColor
+                          : Colors.transparent,
+                      width: 3,
+                    ),
+                    boxShadow: [
+                      if (isSelected)
+                        BoxShadow(
+                          color: AppTheme.lightTheme.primaryColor.withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: selector.imageUrl != null && selector.imageUrl!.isNotEmpty
+                        ? CustomImageWidget(
+                            imageUrl: selector.imageUrl!,
+                            width: isSelected ? 22.w : 20.w,
+                            height: isSelected ? 22.w : 20.w,
+                            fit: BoxFit.cover,
+                            errorWidget: _buildDefaultSelectorAvatar(selector, isSelected),
+                          )
+                        : _buildDefaultSelectorAvatar(selector, isSelected),
+                  ),
+                ),
+                // Pending count badge
+                if (pendingCount > 0)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      padding: EdgeInsets.all(1.w),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.errorColor.withOpacity(0.5),
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      constraints: BoxConstraints(minWidth: 5.w, minHeight: 5.w),
+                      child: Text(
+                        pendingCount > 99 ? '99+' : pendingCount.toString(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            SizedBox(height: 1.h),
+            AnimatedDefaultTextStyle(
+              duration: Duration(milliseconds: 300),
+              style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                fontSize: isSelected ? 12.sp : 11.sp,
+                color: isSelected
+                    ? AppTheme.lightTheme.primaryColor
+                    : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+              child: Container(
+                width: 22.w,
+                child: Text(
+                  selector.fullName.split(' ').first,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultSelectorAvatar(UserProfile selector, bool isSelected) {
+    return Container(
+      width: isSelected ? 22.w : 20.w,
+      height: isSelected ? 22.w : 20.w,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.lightTheme.primaryColor.withOpacity(0.8),
+            AppTheme.accentColor.withOpacity(0.8),
+          ],
+        ),
+      ),
+      child: Icon(
+        Icons.person,
+        color: Colors.white,
+        size: isSelected ? 8.w : 7.w,
       ),
     );
   }
@@ -574,6 +787,10 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     setState(() {
       _selectedSelector = selector;
     });
+
+    _selectionAnimationController.reset();
+    _selectionAnimationController.forward();
+    HapticFeedback.selectionClick();
   }
 
   void _handleAddSelector() async {
@@ -695,193 +912,6 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     );
   }
 
-  Widget _buildMatchesBody() {
-    final matchedProposals = _proposals
-        .where(
-          (p) =>
-              p.status == AcceptanceStatus.accepted &&
-              p.targetStatus == AcceptanceStatus.accepted,
-        )
-        .toList();
-
-    if (_isLoading) return _buildLoadingScreen();
-    if (_errorMessage != null) return _buildErrorScreen();
-
-    if (matchedProposals.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(6.w),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CustomIconWidget(
-                iconName: 'chat',
-                color: AppTheme.lightTheme.primaryColor,
-                size: 48.w,
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                'Henüz eşleşme yok',
-                style: AppTheme.lightTheme.textTheme.titleMedium,
-              ),
-              SizedBox(height: 1.h),
-              Text(
-                'Karşılıklı kabul edilen eşleşmeler burada listelenir.',
-                style: TextStyle(color: Colors.grey[600], fontSize: 12.sp),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final currentUser = Provider.of<AuthProvider>(
-      context,
-      listen: false,
-    ).currentUserProfile;
-
-    return ListView.builder(
-      padding: EdgeInsets.all(4.w),
-      itemCount: matchedProposals.length,
-      itemBuilder: (context, index) {
-        final proposal = matchedProposals[index];
-        final isCandidate = proposal.candidateId == currentUser?.id;
-        final partnerName =
-            isCandidate ? proposal.targetCandidateName : proposal.candidateName;
-        final partnerImage = isCandidate
-            ? proposal.targetCandidateImageUrl
-            : proposal.candidateImageUrl;
-        final partnerBio =
-            isCandidate ? proposal.targetCandidateBio : proposal.candidateBio;
-        final matchDate = proposal.updatedAt ?? proposal.createdAt;
-
-        return Container(
-          margin: EdgeInsets.only(bottom: 2.h),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppTheme.lightTheme.primaryColor.withAlpha(40),
-                Colors.white,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(18),
-                blurRadius: 12,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ListTile(
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 4.w,
-              vertical: 2.h,
-            ),
-            leading: Stack(
-              children: [
-                CircleAvatar(
-                  backgroundImage:
-                      partnerImage != null ? NetworkImage(partnerImage) : null,
-                  radius: 28,
-                  child: partnerImage == null
-                      ? Icon(Icons.person, size: 32)
-                      : null,
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    padding: EdgeInsets.all(0.8.w),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: Icon(Icons.check, color: Colors.white, size: 14),
-                  ),
-                ),
-              ],
-            ),
-            title: Text(
-              partnerName ?? 'Bilinmeyen',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (partnerBio != null && partnerBio.isNotEmpty)
-                  Padding(
-                    padding: EdgeInsets.only(top: 0.5.h, bottom: 0.5.h),
-                    child: Text(
-                      partnerBio,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.sp,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                  ),
-                Row(
-                  children: [
-                    Icon(Icons.favorite, color: Colors.pinkAccent, size: 16),
-                    SizedBox(width: 1.w),
-                    Text(
-                      'Eşleşme: ${_formatMatchDate(matchDate)}',
-                      style: TextStyle(
-                        fontSize: 10.sp,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            trailing: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pushNamed(
-                  context,
-                  AppRoutes.chatScreen,
-                  arguments: {
-                    'matchId': proposal.id,
-                    'partnerName': partnerName,
-                    'partnerImageUrl': partnerImage,
-                  },
-                );
-              },
-              icon: Icon(Icons.chat),
-              label: Text('Mesajlaş'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.lightTheme.primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  String _formatMatchDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-    if (difference.inDays > 0) {
-      return '${difference.inDays} gün önce';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} saat önce';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} dakika önce';
-    } else {
-      return 'Az önce';
-    }
-  }
 
   Widget _buildLoadingScreen() {
     return Center(
@@ -942,48 +972,478 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildEmptySelectorsScreen() {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.all(6.w),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CustomIconWidget(
-              iconName: 'person_search',
-              color: AppTheme.lightTheme.primaryColor,
-              size: 48.w,
+            // Illustration
+            Container(
+              width: 60.w,
+              height: 40.h,
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.primaryContainer
+                    .withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CustomIconWidget(
+                    iconName: 'people_outline',
+                    color: AppTheme.lightTheme.colorScheme.primary,
+                    size: 80,
+                  ),
+                  SizedBox(height: 2.h),
+                  CustomIconWidget(
+                    iconName: 'favorite',
+                    color: AppTheme.accentColor,
+                    size: 40,
+                  ),
+                ],
+              ),
             ),
-            SizedBox(height: 2.h),
+            SizedBox(height: 4.h),
+
+            // Title
             Text(
-              'Henüz sizi eşleştirmeye çalışan bir seçici yok',
-              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              "Henüz Seçiciniz Yok",
+              style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
+                color: AppTheme.lightTheme.colorScheme.primary,
               ),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 2.h),
+
+            // Description
             Text(
-              'Profilinizi güncelleyerek daha fazla seçicinin sizi görmesini sağlayabilirsiniz.',
+              "Seçiciler, sizin için uygun eşleri bulup önerebilecek güvenilir kişilerdir. Aile üyelerinizi veya yakın arkadaşlarınızı seçici olarak davet edebilirsiniz.",
               style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                 color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 3.h),
-            ElevatedButton.icon(
+
+            // Benefits
+            Container(
+              padding: EdgeInsets.all(4.w),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppTheme.lightTheme.colorScheme.outline
+                      .withValues(alpha: 0.2),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    "Seçici Avantajları",
+                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.lightTheme.colorScheme.primary,
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  _buildBenefitItem(
+                    "Güvenilir Eşleşmeler",
+                    "Sizi tanıyan kişiler daha uygun eşler önerir",
+                    'verified',
+                  ),
+                  SizedBox(height: 1.5.h),
+                  _buildBenefitItem(
+                    "Kültürel Uyum",
+                    "Geleneksel değerlerinize uygun öneriler",
+                    'favorite',
+                  ),
+                  SizedBox(height: 1.5.h),
+                  _buildBenefitItem(
+                    "Aile Desteği",
+                    "Ailenizin onayladığı ilişkiler",
+                    'family_restroom',
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 4.h),
+
+            // Call to Action
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _showAddSelectorDialog,
+                icon: CustomIconWidget(
+                  iconName: 'person_add',
+                  color: Colors.white,
+                  size: 20,
+                ),
+                label: const Text("İlk Seçicinizi Ekleyin"),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 2.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 2.h),
+
+            // Secondary Action
+            TextButton.icon(
               onPressed: () {
                 Navigator.pushNamed(context, '/profile-screen');
               },
-              icon: Icon(Icons.person),
-              label: Text('Profilimi Güncelle'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.lightTheme.primaryColor,
-                foregroundColor: Colors.white,
+              icon: CustomIconWidget(
+                iconName: 'person',
+                color: AppTheme.lightTheme.colorScheme.primary,
+                size: 18,
               ),
+              label: const Text("Profilimi Tamamla"),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBenefitItem(String title, String description, String iconName) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: EdgeInsets.all(2.w),
+          decoration: BoxDecoration(
+            color: AppTheme.lightTheme.colorScheme.primaryContainer
+                .withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: CustomIconWidget(
+            iconName: iconName,
+            color: AppTheme.lightTheme.colorScheme.primary,
+            size: 20,
+          ),
+        ),
+        SizedBox(width: 3.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 0.5.h),
+              Text(
+                description,
+                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                  color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHowItWorksStep({
+    required String icon,
+    required String title,
+    required String description,
+  }) {
+    return Container(
+      padding: EdgeInsets.all(2.5.w),
+      decoration: BoxDecoration(
+        color: AppTheme.lightTheme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(10.w),
+        border: Border.all(
+          color: AppTheme.lightTheme.colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(1.5.w),
+            decoration: BoxDecoration(
+              color: AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: CustomIconWidget(
+              iconName: icon,
+              color: AppTheme.lightTheme.primaryColor,
+              size: 14.w,
+            ),
+          ),
+          SizedBox(width: 2.5.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.lightTheme.colorScheme.onSurface,
+                  ),
+                ),
+                SizedBox(height: 0.5.h),
+                Text(
+                  description,
+                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddSelectorDialog() async {
+    final TextEditingController emailController = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.w),
+        ),
+        title: Row(
+          children: [
+            CustomIconWidget(
+              iconName: 'person_add',
+              color: AppTheme.lightTheme.primaryColor,
+              size: 24.w,
+            ),
+            SizedBox(width: 2.w),
+            Text(
+              'Seçici Ekle',
+              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sizin için eşleşme bulacak kişinin email adresini girin:',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            SizedBox(height: 2.h),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Email Adresi',
+                hintText: 'ornek@email.com',
+                prefixIcon: Icon(Icons.email),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.w),
+                ),
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.w),
+              ),
+              child: Row(
+                children: [
+                  CustomIconWidget(
+                    iconName: 'info',
+                    color: AppTheme.lightTheme.primaryColor,
+                    size: 16.w,
+                  ),
+                  SizedBox(width: 2.w),
+                  Expanded(
+                    child: Text(
+                      'Bu kişi sizin için uygun adayları bulup eşleştirme önerileri gönderecek.',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.lightTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'İptal',
+              style: TextStyle(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (emailController.text.trim().isNotEmpty) {
+                Navigator.pop(context, true);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.lightTheme.primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.w),
+              ),
+            ),
+            child: Text('Ekle'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && emailController.text.trim().isNotEmpty) {
+      await _addSelectorByEmail(emailController.text.trim());
+    }
+  }
+
+  Future<void> _addSelectorByEmail(String email) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+
+      if (currentUser == null) {
+        _showErrorSnackBar('Kullanıcı oturumu bulunamadı');
+        return;
+      }
+
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: EdgeInsets.all(6.w),
+            decoration: BoxDecoration(
+              color: AppTheme.lightTheme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(12.w),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  color: AppTheme.lightTheme.primaryColor,
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'Seçici ekleniyor...',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await UserService().addSelectorToCandidate(
+        candidateId: currentUser.id,
+        selectorEmail: email,
+      );
+
+      // Close loading dialog
+      Navigator.of(context).pop();
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              CustomIconWidget(
+                iconName: 'check_circle',
+                color: Colors.white,
+                size: 20.w,
+              ),
+              SizedBox(width: 2.w),
+              Text('Seçici başarıyla eklendi!'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.w),
+          ),
+        ),
+      );
+
+      // Refresh data
+      _loadData();
+    } catch (e) {
+      // Close loading dialog if open
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+
+      _showErrorSnackBar('Seçici eklenirken hata oluştu: ${e.toString()}');
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            CustomIconWidget(
+              iconName: 'error',
+              color: Colors.white,
+              size: 20.w,
+            ),
+            SizedBox(width: 2.w),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8.w),
+        ),
+      ),
+    );
+  }
+
+  bool _checkIfMatched(MatchProposal proposal) {
+    return proposal.status == AcceptanceStatus.accepted && 
+           proposal.targetStatus == AcceptanceStatus.accepted;
+  }
+
+  void _navigateToChat(MatchProposal proposal) {
+    final currentUserId = Provider.of<AuthProvider>(context, listen: false).currentUserProfile!.id;
+    final isDirectCandidate = proposal.candidateId == currentUserId;
+    
+    final partnerId = isDirectCandidate
+        ? proposal.targetCandidateId
+        : proposal.candidateId;
+    final partnerName = isDirectCandidate
+        ? proposal.targetCandidateName ?? 'Eşiniz'
+        : proposal.candidateName ?? 'Eşiniz';
+    final partnerImageUrl = isDirectCandidate
+        ? proposal.targetCandidateImageUrl
+        : proposal.candidateImageUrl;
+
+    Navigator.pushNamed(
+      context,
+      AppRoutes.chatScreen,
+      arguments: {
+        'matchId': proposal.id,
+        'partnerId': partnerId,
+        'partnerName': partnerName,
+        'partnerImageUrl': partnerImageUrl,
+      },
     );
   }
 
@@ -1005,18 +1465,41 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       final currentUser = authProvider.currentUserProfile;
       if (currentUser == null) throw Exception('Kullanıcı bulunamadı');
 
-      await matchProposalService.updateCandidateResponse(
+      final updatedProposal = await matchProposalService.updateCandidateResponse(
         proposalId: proposal.id,
         candidateId: currentUser.id,
         status: AcceptanceStatus.accepted,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Öneri kabul edildi'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Check if this resulted in a match
+      final isMatched = _checkIfMatched(updatedProposal);
+      
+      if (isMatched) {
+        // Show celebration dialog for match
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => MatchCelebrationDialog(
+            matchProposal: updatedProposal,
+            currentUser: currentUser,
+            onSendMessage: () => _navigateToChat(updatedProposal),
+          ),
+        );
+      } else {
+        // Show simple success message for acceptance
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Öneri kabul edildi'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      // Update the state to remove the accepted proposal from the list
+      setState(() {
+        _proposals.removeWhere((p) => p.id == proposal.id);
+      });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1046,6 +1529,11 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           backgroundColor: Colors.orange,
         ),
       );
+      
+      // Update the state to remove the rejected proposal from the list
+      setState(() {
+        _proposals.removeWhere((p) => p.id == proposal.id);
+      });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1076,7 +1564,9 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
             _tabController.animateTo(0);
             break;
           case 1:
-            _tabController.animateTo(2); // Eşleşmeler sekmesi
+            // Badge'i kalıcı olarak sıfırla ve matches screen'e git
+            _markMatchesAsViewed();
+            Navigator.pushNamed(context, '/matches-screen');
             break;
           case 2:
             Navigator.pushNamed(context, '/my-selectors-screen');
@@ -1100,10 +1590,37 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           label: 'Ana Sayfa',
         ),
         BottomNavigationBarItem(
-          icon: CustomIconWidget(
-            iconName: 'chat',
-            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-            size: 24,
+          icon: Stack(
+            children: [
+              CustomIconWidget(
+                iconName: 'chat',
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                size: 24,
+              ),
+              if (_newMatchesCount > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: EdgeInsets.all(1.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_newMatchesCount',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
           label: 'Eşleşmeler',
         ),
@@ -1113,7 +1630,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
             color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             size: 24,
           ),
-          label: 'Görücülerim',
+          label: 'Seçicilerim',
         ),
         BottomNavigationBarItem(
           icon: CustomIconWidget(

@@ -10,7 +10,7 @@ class EnhancedPotentialMatchesSection extends StatefulWidget {
   final UserProfile? selectedCandidate;
   final VoidCallback onRefresh;
   final Function(UserProfile)? onMatchProposal;
-  final Function(UserProfile, bool isRightSwipe)? onCardSwiped;
+  final void Function(String, bool)? onCardSwiped;
 
   const EnhancedPotentialMatchesSection({
     super.key,
@@ -34,10 +34,15 @@ class _EnhancedPotentialMatchesSectionState
   void didUpdateWidget(covariant EnhancedPotentialMatchesSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.potentialMatches.isNotEmpty) {
+      // Stack'te en üstteki kart = en son gösterilen kart
+      final visibleCount = widget.potentialMatches.length.clamp(0, 3);
+      final topIndex = visibleCount - 1;
+      final actualTopCandidate = widget.potentialMatches[topIndex];
+      
       if (currentTopCandidate == null ||
-          widget.potentialMatches.first.id != currentTopCandidate!.id) {
+          actualTopCandidate.id != currentTopCandidate!.id) {
         setState(() {
-          currentTopCandidate = widget.potentialMatches.first;
+          currentTopCandidate = actualTopCandidate;
         });
       }
     } else {
@@ -225,20 +230,10 @@ class _EnhancedPotentialMatchesSectionState
                   candidate: candidate,
                   selectedCandidate: widget.selectedCandidate,
                   onSwipeRight: index == 0
-                      ? (c) {
-                          if (widget.onCardSwiped != null) {
-                            widget.onCardSwiped!(c, true);
-                          }
-                          _updateTopCandidate();
-                        }
+                      ? (name) => widget.onCardSwiped?.call(name, true)
                       : null,
                   onSwipeLeft: index == 0
-                      ? (c) {
-                          if (widget.onCardSwiped != null) {
-                            widget.onCardSwiped!(c, false);
-                          }
-                          _updateTopCandidate();
-                        }
+                      ? (name) => widget.onCardSwiped?.call(name, false)
                       : null,
                   isTopCard: index == 0,
                 ),
@@ -268,7 +263,7 @@ class _EnhancedPotentialMatchesSectionState
                     heroTag: "pass",
                     onPressed: () {
                       if (topCandidate != null && widget.onCardSwiped != null) {
-                        widget.onCardSwiped!(topCandidate, false);
+                        widget.onCardSwiped!(topCandidate.fullName, false);
                       }
                       _updateTopCandidate();
                     },
@@ -324,7 +319,7 @@ class _EnhancedPotentialMatchesSectionState
                     heroTag: "like",
                     onPressed: () {
                       if (topCandidate != null && widget.onCardSwiped != null) {
-                        widget.onCardSwiped!(topCandidate, true);
+                        widget.onCardSwiped!(topCandidate.fullName, true);
                       }
                       _updateTopCandidate();
                     },
@@ -348,8 +343,12 @@ class _EnhancedPotentialMatchesSectionState
   void _updateTopCandidate() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.potentialMatches.isNotEmpty) {
+        // Stack'te en üstteki kart = en son gösterilen kart
+        final visibleCount = widget.potentialMatches.length.clamp(0, 3);
+        final topIndex = visibleCount - 1;
+        final actualTopCandidate = widget.potentialMatches[topIndex];
         setState(() {
-          currentTopCandidate = widget.potentialMatches.first;
+          currentTopCandidate = actualTopCandidate;
         });
       } else {
         setState(() {

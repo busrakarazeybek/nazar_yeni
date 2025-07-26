@@ -1,10 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/auth_service.dart';
+import '../services/supabase_notification_service.dart';
+import '../services/realtime_update_service.dart';
 import '../models/user_profile.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
+  final SupabaseNotificationService _notificationService = SupabaseNotificationService();
+  final RealtimeUpdateService _realtimeService = RealtimeUpdateService();
 
   User? _currentUser;
   UserProfile? _currentUserProfile;
@@ -19,6 +23,8 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _currentUser != null;
   bool get isInitialized => _isInitialized;
+  SupabaseNotificationService get notificationService => _notificationService;
+  RealtimeUpdateService get realtimeService => _realtimeService;
 
   // Constructor
   AuthProvider() {
@@ -30,6 +36,12 @@ class AuthProvider extends ChangeNotifier {
     try {
       _setLoading(true);
 
+      // Initialize notification service
+      await _notificationService.initialize();
+
+      // Initialize real-time update service
+      await _realtimeService.initialize();
+
       // Listen to auth state changes
       _authService.authStateStream.listen((authState) {
         _onAuthStateChange(authState);
@@ -40,6 +52,10 @@ class AuthProvider extends ChangeNotifier {
 
       if (_currentUser != null) {
         await _loadUserProfile();
+        // Set current user for notifications
+        _notificationService.setCurrentUser(_currentUser!.id);
+        // Set current user for real-time updates
+        await _realtimeService.setCurrentUser(_currentUser!.id);
       }
 
       _isInitialized = true;
@@ -57,9 +73,17 @@ class AuthProvider extends ChangeNotifier {
     if (user != null && _currentUser?.id != user.id) {
       _currentUser = user;
       await _loadUserProfile();
+      // Set current user for notifications
+      _notificationService.setCurrentUser(user.id);
+      // Set current user for real-time updates
+      await _realtimeService.setCurrentUser(user.id);
     } else if (user == null) {
       _currentUser = null;
       _currentUserProfile = null;
+      // Clear notification user
+      _notificationService.clearCurrentUser();
+      // Clear real-time updates user
+      await _realtimeService.clearCurrentUser();
     }
 
     notifyListeners();
@@ -95,6 +119,10 @@ class AuthProvider extends ChangeNotifier {
       if (response.user != null) {
         _currentUser = response.user;
         await _loadUserProfile();
+        // Set current user for notifications
+        _notificationService.setCurrentUser(_currentUser!.id);
+        // Set current user for real-time updates
+        await _realtimeService.setCurrentUser(_currentUser!.id);
         return true;
       }
 
@@ -131,6 +159,10 @@ class AuthProvider extends ChangeNotifier {
         _currentUser = response.user;
         // Profile will be created automatically by trigger
         await _loadUserProfile();
+        // Set current user for notifications
+        _notificationService.setCurrentUser(_currentUser!.id);
+        // Set current user for real-time updates
+        await _realtimeService.setCurrentUser(_currentUser!.id);
         return true;
       }
 
@@ -153,6 +185,10 @@ class AuthProvider extends ChangeNotifier {
 
       _currentUser = null;
       _currentUserProfile = null;
+      // Clear notification user
+      _notificationService.clearCurrentUser();
+      // Clear real-time updates user
+      await _realtimeService.clearCurrentUser();
     } catch (e) {
       _setError(_getErrorMessage(e.toString()));
     } finally {

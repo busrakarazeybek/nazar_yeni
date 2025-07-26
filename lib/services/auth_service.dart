@@ -163,6 +163,11 @@ class AuthService {
     String? profession,
     String? imageUrl,
     String? phone,
+    int? preferredAgeMin,
+    int? preferredAgeMax,
+    List<String>? preferredCities,
+    List<String>? preferredInterests,
+    List<String>? preferredGenders,
   }) async {
     try {
       final client = await _supabaseService.client;
@@ -179,6 +184,11 @@ class AuthService {
       if (profession != null) updateData['profession'] = profession;
       if (imageUrl != null) updateData['image_url'] = imageUrl;
       if (phone != null) updateData['phone'] = phone;
+      if (preferredAgeMin != null) updateData['preferred_age_min'] = preferredAgeMin;
+      if (preferredAgeMax != null) updateData['preferred_age_max'] = preferredAgeMax;
+      if (preferredCities != null) updateData['preferred_cities'] = preferredCities;
+      if (preferredInterests != null) updateData['preferred_interests'] = preferredInterests;
+      if (preferredGenders != null) updateData['preferred_genders'] = preferredGenders;
 
       final response = await client
           .from('user_profiles')

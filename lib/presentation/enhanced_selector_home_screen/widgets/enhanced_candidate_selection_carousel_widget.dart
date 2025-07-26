@@ -37,7 +37,7 @@ class _EnhancedCandidateSelectionCarouselState
         itemBuilder: (context, index) {
           final candidate = widget.candidates[index];
           final isSelected = widget.selectedCandidate?.id == candidate.id;
-          
+
           return AnimatedContainer(
             duration: Duration(milliseconds: 300),
             curve: Curves.easeInOut,
@@ -64,7 +64,8 @@ class _EnhancedCandidateSelectionCarouselState
                       boxShadow: [
                         if (isSelected)
                           BoxShadow(
-                            color: AppTheme.lightTheme.primaryColor.withOpacity(0.3),
+                            color: AppTheme.lightTheme.primaryColor
+                                .withOpacity(0.3),
                             blurRadius: 10,
                             offset: Offset(0, 4),
                           ),
@@ -80,7 +81,7 @@ class _EnhancedCandidateSelectionCarouselState
                           ? Image.network(
                               candidate.imageUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => 
+                              errorBuilder: (context, error, stackTrace) =>
                                   _buildDefaultAvatar(candidate, isSelected),
                             )
                           : _buildDefaultAvatar(candidate, isSelected),
@@ -90,7 +91,8 @@ class _EnhancedCandidateSelectionCarouselState
                   AnimatedDefaultTextStyle(
                     duration: Duration(milliseconds: 300),
                     style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
                       fontSize: isSelected ? 12.sp : 11.sp,
                       color: isSelected
                           ? AppTheme.lightTheme.primaryColor
@@ -181,7 +183,7 @@ class _EnhancedCandidateSelectionCarouselState
         ],
       ),
     );
-    
+
     if (confirm == true) {
       widget.onRemoveCandidate(candidate);
     }

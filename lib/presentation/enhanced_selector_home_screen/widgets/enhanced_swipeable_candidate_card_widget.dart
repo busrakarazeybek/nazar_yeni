@@ -7,8 +7,8 @@ import '../../../core/app_export.dart';
 class EnhancedSwipeableCandidateCard extends StatefulWidget {
   final UserProfile candidate;
   final UserProfile? selectedCandidate;
-  final void Function(UserProfile)? onSwipeRight;
-  final void Function(UserProfile)? onSwipeLeft;
+  final void Function(String)? onSwipeRight;
+  final void Function(String)? onSwipeLeft;
   final bool isTopCard;
 
   const EnhancedSwipeableCandidateCard({
@@ -125,7 +125,6 @@ class _EnhancedSwipeableCandidateCardState
 
   @override
   Widget build(BuildContext context) {
-    print('DEBUG: Kartta görünen isim: ${widget.candidate.fullName}');
     final compatibilityScore = _calculateCompatibilityScore();
 
     return Align(
@@ -170,12 +169,23 @@ class _EnhancedSwipeableCandidateCardState
                             // Swiped right - like
                             _animateCardOff(Alignment.centerRight);
                             HapticFeedback.mediumImpact();
-                            widget.onSwipeRight?.call(widget.candidate);
+                            if (widget.selectedCandidate != null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '${widget.selectedCandidate!.fullName} için ${widget.candidate.fullName} ile eşleşme önerisi gönderildi!',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                            widget.onSwipeRight
+                                ?.call(widget.candidate.fullName);
                           } else {
                             // Swiped left - pass
                             _animateCardOff(Alignment.centerLeft);
                             HapticFeedback.lightImpact();
-                            widget.onSwipeLeft?.call(widget.candidate);
+                            widget.onSwipeLeft?.call(widget.candidate.fullName);
                           }
                         } else {
                           // Snap back to center
@@ -561,7 +571,14 @@ class _EnhancedSwipeableCandidateCardState
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
 
-    _animationController.forward();
+    // Animasyon tamamlandığında parent'a callback gönder
+    _animationController.forward().then((_) {
+      if (alignment == Alignment.centerRight) {
+        // widget.onSwipeRight?.call(widget.candidate); // This line is removed
+      } else {
+        // widget.onSwipeLeft?.call(widget.candidate); // This line is removed
+      }
+    });
   }
 
   void _animateCardBack() {

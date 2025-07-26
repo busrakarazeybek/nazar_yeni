@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
+import '../../models/match_proposal.dart';
 import '../../services/match_proposal_service.dart';
 import './widgets/empty_selectors_widget.dart';
 import './widgets/invite_selector_widget.dart';
@@ -24,12 +26,16 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
   List<Map<String, dynamic>> _filteredSelectors = [];
   bool _isLoading = false;
   String _searchQuery = '';
+  int _newMatchesCount = 0;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _loadMockData();
+    // Load data after build to prevent double rendering
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadMockData();
+    });
   }
 
   @override
@@ -43,7 +49,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUserProfile;
@@ -58,20 +64,24 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
       }
 
       List<Map<String, dynamic>> loadedSelectors = [];
-      
+      List<MatchProposal> proposals = []; // Proposals'ı burada tanımla
+
       if (currentUser.role == UserRole.selector) {
         // For selectors: Get candidates (existing logic)
-        final candidates = await _userService.getSelectorCandidates(currentUser.id);
-        
+        final candidates =
+            await _userService.getSelectorCandidates(currentUser.id);
+
         // Convert UserProfile candidates to selector format for UI consistency
         loadedSelectors = candidates.map((candidate) {
-        // Generate mock stats based on candidate ID for consistency
-        final stats = _generateStatsForCandidate(candidate.id);
-        
+          // Generate mock stats based on candidate ID for consistency
+          final stats = _generateStatsForCandidate(candidate.id);
+
           return {
             "id": candidate.id, // Use real ID instead of hashCode
             "name": candidate.fullName,
-            "profileImage": candidate.imageUrl?.isNotEmpty == true ? candidate.imageUrl : _getDefaultImageForCandidate(candidate.fullName),
+            "profileImage": candidate.imageUrl?.isNotEmpty == true
+                ? candidate.imageUrl
+                : _getDefaultImageForCandidate(candidate.fullName),
             "relationshipType": _getRelationshipType(candidate),
             "isActive": candidate.isActive,
             "totalSent": stats['totalSent'],
@@ -89,16 +99,23 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             "interests": candidate.interests,
           };
         }).toList();
-        
       } else if (currentUser.role == UserRole.candidate) {
         // For candidates: Get selectors (similar to candidate home screen logic)
         final matchProposalService = MatchProposalService();
-        final proposals = await matchProposalService.getProposalsForCandidate(currentUser.id);
-        
+        proposals =
+            await matchProposalService.getProposalsForCandidate(currentUser.id);
+
+        // Yeni eşleşmeleri say
+        final matchedProposals = proposals
+            .where((p) =>
+                p.status == AcceptanceStatus.accepted &&
+                p.targetStatus == AcceptanceStatus.accepted)
+            .toList();
+
         // Extract unique selector IDs from proposals
         final selectorIds = proposals.map((p) => p.selectorId).toSet().toList();
         final selectors = <UserProfile>[];
-        
+
         for (final selectorId in selectorIds) {
           try {
             final selector = await _userService.getUserProfile(selectorId);
@@ -109,16 +126,18 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             print('Error loading selector $selectorId: $e');
           }
         }
-        
+
         // Convert UserProfile selectors to selector format for UI consistency
         loadedSelectors = selectors.map((selector) {
           // Generate mock stats based on selector ID for consistency
           final stats = _generateStatsForCandidate(selector.id);
-          
+
           return {
             "id": selector.id,
             "name": selector.fullName,
-            "profileImage": selector.imageUrl?.isNotEmpty == true ? selector.imageUrl : _getDefaultImageForCandidate(selector.fullName),
+            "profileImage": selector.imageUrl?.isNotEmpty == true
+                ? selector.imageUrl
+                : _getDefaultImageForCandidate(selector.fullName),
             "relationshipType": _getRelationshipType(selector),
             "isActive": selector.isActive,
             "totalSent": stats['totalSent'],
@@ -137,36 +156,31 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
           };
         }).toList();
       }
-      
-      // If no real candidates, add fallback data
-      if (loadedSelectors.isEmpty) {
-        loadedSelectors = [
-          {
-            "id": 1,
-            "name": "Aday Bir",
-            "profileImage": "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=400",
-            "relationshipType": "Aile",
-            "isActive": true,
-            "totalSent": 12,
-            "pending": 3,
-            "accepted": 7,
-            "rejected": 2,
-            "successRate": 58.3,
-            "lastActivity": "2 saat önce",
-            "joinedDate": "15 Ocak 2024",
-            "description": "Ailemizin sevgili adayı",
-            "isPaused": false,
-            "age": 25,
-            "location": "İstanbul",
-            "profession": "Mühendis",
-            "interests": ["Kitap", "Spor"],
-          },
-        ];
+
+      // No fallback data - show empty state for new users
+
+      // Badge durumunu kontrol et
+      int matchesCount = 0;
+      if (currentUser.role == UserRole.candidate) {
+        final prefs = await SharedPreferences.getInstance();
+        final hasViewedMatches =
+            prefs.getBool('hasViewedMatches_${currentUser.id}') ?? false;
+
+        final currentMatchCount = proposals
+            .where((p) =>
+                p.status == AcceptanceStatus.accepted &&
+                p.targetStatus == AcceptanceStatus.accepted)
+            .length;
+
+        if (!hasViewedMatches) {
+          matchesCount = currentMatchCount;
+        }
       }
-      
+
       setState(() {
         _allSelectors = loadedSelectors;
         _filteredSelectors = List.from(_allSelectors);
+        _newMatchesCount = matchesCount;
         _isLoading = false;
       });
     } catch (e) {
@@ -177,6 +191,24 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
         _filteredSelectors = [];
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _markMatchesAsViewed() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasViewedMatches_${currentUser.id}', true);
+
+        setState(() {
+          _newMatchesCount = 0;
+        });
+      }
+    } catch (e) {
+      print('Error marking matches as viewed: $e');
     }
   }
 
@@ -197,13 +229,14 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     }
     final age = candidate.age != null ? "${candidate.age} yaşında" : "";
     final location = candidate.location != null ? candidate.location! : "";
-    final profession = candidate.profession != null ? candidate.profession! : "";
-    
+    final profession =
+        candidate.profession != null ? candidate.profession! : "";
+
     List<String> parts = [];
     if (age.isNotEmpty) parts.add(age);
     if (location.isNotEmpty) parts.add("$location'de yaşıyor");
     if (profession.isNotEmpty) parts.add(profession);
-    
+
     return parts.isNotEmpty ? parts.join(", ") : "Ailemizin sevgili adayı";
   }
 
@@ -227,7 +260,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
   String _getLastActivity(UserProfile candidate) {
     final now = DateTime.now();
     final diff = now.difference(candidate.createdAt);
-    
+
     if (diff.inDays > 7) return "${diff.inDays} gün önce";
     if (diff.inDays > 0) return "${diff.inDays} gün önce";
     if (diff.inHours > 0) return "${diff.inHours} saat önce";
@@ -236,8 +269,18 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
 
   String _formatJoinDate(DateTime date) {
     final months = [
-      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+      'Ocak',
+      'Şubat',
+      'Mart',
+      'Nisan',
+      'Mayıs',
+      'Haziran',
+      'Temmuz',
+      'Ağustos',
+      'Eylül',
+      'Ekim',
+      'Kasım',
+      'Aralık'
     ];
     return "${date.day} ${months[date.month - 1]} ${date.year}";
   }
@@ -489,15 +532,15 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     Navigator.pop(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final role = authProvider.currentUserProfile?.role;
-    
+
     if (role == UserRole.selector) {
       // For selectors: Navigate to enhanced selector home screen with candidate pre-selected
       final candidateId = selector['id'].toString();
       print('DEBUG: Selector navigating with candidate ID: $candidateId');
       print('DEBUG: Selector data: $selector');
-      
+
       Navigator.pushNamed(
-        context, 
+        context,
         AppRoutes.enhancedSelectorHomeScreen,
         arguments: {'selectedCandidateId': candidateId},
       );
@@ -506,9 +549,9 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
       final selectorId = selector['id'].toString();
       print('DEBUG: Candidate navigating with selector ID: $selectorId');
       print('DEBUG: Selector data: $selector');
-      
+
       Navigator.pushNamed(
-        context, 
+        context,
         AppRoutes.candidateHomeScreen,
         arguments: {'selectedSelectorId': selectorId},
       );
@@ -627,6 +670,8 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             if (role == UserRole.selector) {
               Navigator.pushReplacementNamed(context, '/my-selections-screen');
             } else {
+              // Badge'i kalıcı olarak sıfırla ve matches screen'e git
+              _markMatchesAsViewed();
               Navigator.pushReplacementNamed(context, '/matches-screen');
             }
             break;
@@ -648,38 +693,92 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
           ),
           activeIcon: CustomIconWidget(
             iconName: 'home',
-            color: AppTheme
-                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            color:
+                AppTheme.lightTheme.bottomNavigationBarTheme.selectedItemColor!,
             size: 24,
           ),
           label: 'Ana Sayfa',
         ),
         BottomNavigationBarItem(
-          icon: CustomIconWidget(
-            iconName: isSelector ? 'list' : 'favorite',
-            color: AppTheme
-                .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
-            size: 24,
+          icon: Stack(
+            children: [
+              CustomIconWidget(
+                iconName: isSelector ? 'list' : 'favorite',
+                color: AppTheme
+                    .lightTheme.bottomNavigationBarTheme.unselectedItemColor!,
+                size: 24,
+              ),
+              if (!isSelector && _newMatchesCount > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: EdgeInsets.all(1.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_newMatchesCount',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
-          activeIcon: CustomIconWidget(
-            iconName: isSelector ? 'list' : 'favorite',
-            color: AppTheme
-                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
-            size: 24,
+          activeIcon: Stack(
+            children: [
+              CustomIconWidget(
+                iconName: isSelector ? 'list' : 'favorite',
+                color: AppTheme
+                    .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+                size: 24,
+              ),
+              if (!isSelector && _newMatchesCount > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: EdgeInsets.all(1.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_newMatchesCount',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
           label: isSelector ? 'Önerilerim' : 'Eşleşmeler',
         ),
         BottomNavigationBarItem(
           icon: CustomIconWidget(
             iconName: 'people',
-            color: AppTheme
-                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            color:
+                AppTheme.lightTheme.bottomNavigationBarTheme.selectedItemColor!,
             size: 24,
           ),
           activeIcon: CustomIconWidget(
             iconName: 'people',
-            color: AppTheme
-                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            color:
+                AppTheme.lightTheme.bottomNavigationBarTheme.selectedItemColor!,
             size: 24,
           ),
           label: isSelector ? 'Adaylarım' : 'Seçicilerim',
@@ -693,8 +792,8 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
           ),
           activeIcon: CustomIconWidget(
             iconName: 'person',
-            color: AppTheme
-                .lightTheme.bottomNavigationBarTheme.selectedItemColor!,
+            color:
+                AppTheme.lightTheme.bottomNavigationBarTheme.selectedItemColor!,
             size: 24,
           ),
           label: 'Profil',
@@ -722,67 +821,70 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
         ],
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Search Bar
-            Container(
-              margin: EdgeInsets.all(4.w),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: _getSearchHint(),
-                  prefixIcon: Padding(
-                    padding: EdgeInsets.all(3.w),
-                    child: CustomIconWidget(
-                      iconName: 'search',
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                      size: 20,
-                    ),
-                  ),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          onPressed: () {
-                            _searchController.clear();
-                          },
-                          icon: CustomIconWidget(
-                            iconName: 'clear',
+        child: _isLoading
+            ? _buildLoadingScreen()
+            : Column(
+                children: [
+                  // Search Bar
+                  Container(
+                    margin: EdgeInsets.all(4.w),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: _getSearchHint(),
+                        prefixIcon: Padding(
+                          padding: EdgeInsets.all(3.w),
+                          child: CustomIconWidget(
+                            iconName: 'search',
                             color: AppTheme
                                 .lightTheme.colorScheme.onSurfaceVariant,
                             size: 20,
                           ),
-                        )
-                      : null,
-                ),
-              ),
-            ),
-
-            // Selectors List
-            Expanded(
-              child: _filteredSelectors.isEmpty
-                  ? EmptySelectorsWidget(
-                      onAddSelector: _showInviteSelector,
-                    )
-                  : RefreshIndicator(
-                      key: _refreshIndicatorKey,
-                      onRefresh: _onRefresh,
-                      child: ListView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 4.w),
-                        itemCount: _filteredSelectors.length,
-                        itemBuilder: (context, index) {
-                          final selector = _filteredSelectors[index];
-                          return SelectorCardWidget(
-                            selector: selector,
-                            onTap: () => _showSelectorDetail(selector),
-                            onRemove: () => _removeSelector(selector),
-                            onToggleStatus: () =>
-                                _toggleSelectorStatus(selector),
-                          );
-                        },
+                        ),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                                icon: CustomIconWidget(
+                                  iconName: 'clear',
+                                  color: AppTheme
+                                      .lightTheme.colorScheme.onSurfaceVariant,
+                                  size: 20,
+                                ),
+                              )
+                            : null,
                       ),
                     ),
-            ),
-          ],
-        ),
+                  ),
+
+                  // Selectors List
+                  Expanded(
+                    child: _filteredSelectors.isEmpty
+                        ? EmptySelectorsWidget(
+                            onAddSelector: _showInviteSelector,
+                          )
+                        : RefreshIndicator(
+                            key: _refreshIndicatorKey,
+                            onRefresh: _onRefresh,
+                            child: ListView.builder(
+                              padding: EdgeInsets.symmetric(horizontal: 4.w),
+                              itemCount: _filteredSelectors.length,
+                              itemBuilder: (context, index) {
+                                final selector = _filteredSelectors[index];
+                                return SelectorCardWidget(
+                                  selector: selector,
+                                  onTap: () => _showSelectorDetail(selector),
+                                  onRemove: () => _removeSelector(selector),
+                                  onToggleStatus: () =>
+                                      _toggleSelectorStatus(selector),
+                                );
+                              },
+                            ),
+                          ),
+                  ),
+                ],
+              ),
       ),
       floatingActionButton: _filteredSelectors.isNotEmpty
           ? FloatingActionButton.extended(
@@ -797,6 +899,24 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             )
           : null,
       bottomNavigationBar: _buildBottomNavigationBar(),
+    );
+  }
+
+  Widget _buildLoadingScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            color: AppTheme.lightTheme.primaryColor,
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            'Seçiciler yükleniyor...',
+            style: AppTheme.lightTheme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
     );
   }
 }

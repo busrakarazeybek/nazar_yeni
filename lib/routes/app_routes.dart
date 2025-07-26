@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../presentation/candidate_home_screen/candidate_home_screen.dart';
 import '../presentation/candidate_profile_detail_screen/candidate_profile_detail_screen.dart';
 import '../presentation/chat_screen/chat_screen.dart';
+import '../presentation/chat_screen/improved_chat_screen.dart';
 import '../presentation/dual_candidate_selection_screen/dual_candidate_selection_screen.dart';
 import '../presentation/enhanced_selector_home_screen/enhanced_selector_home_screen.dart';
 import '../presentation/home_screen/home_screen.dart';
@@ -37,6 +38,7 @@ class AppRoutes {
   static const String selectorRegistrationScreen =
       '/selector-registration-screen';
   static const String chatScreen = '/chat-screen';
+  static const String improvedChatScreen = '/improved-chat-screen';
   static const String mySelectorsScreen = '/my-selectors-screen';
   static const String mySelectionsScreen = '/my-selections-screen';
   static const String profileScreen = '/profile-screen';
@@ -55,13 +57,30 @@ class AppRoutes {
     homeScreen: (context) => const HomeScreen(),
     selectorHomeScreen: (context) => const SelectorHomeScreen(),
     enhancedSelectorHomeScreen: (context) => const EnhancedSelectorHomeScreen(),
-    candidateHomeScreen: (context) => CandidateHomeScreen(),
+    candidateHomeScreen: (context) => const CandidateHomeScreen(),
     candidateProfileDetailScreen: (context) =>
         const CandidateProfileDetailScreen(),
     matchesScreen: (context) => const MatchesScreen(),
     registrationScreen: (context) => const RegistrationScreen(),
     selectorRegistrationScreen: (context) => const SelectorRegistrationScreen(),
-    chatScreen: (context) => const ChatScreen(),
+    chatScreen: (context) {
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final matchId = args?['matchId'] as String?;
+      return ChatScreen(matchId: matchId);
+    },
+    improvedChatScreen: (context) {
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final matchId = args?['matchId'] as String? ?? '';
+      final partnerName = args?['partnerName'] as String?;
+      final partnerImageUrl = args?['partnerImageUrl'] as String?;
+      final partnerId = args?['partnerId'] as String?;
+      return ImprovedChatScreen(
+        matchId: matchId,
+        partnerName: partnerName,
+        partnerImageUrl: partnerImageUrl,
+        partnerId: partnerId,
+      );
+    },
     mySelectorsScreen: (context) => const MySelectorsScreen(),
     mySelectionsScreen: (context) => const MySelectionsScreen(),
     profileScreen: (context) => const ProfileScreen(),

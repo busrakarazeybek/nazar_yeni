@@ -420,4 +420,51 @@ class UserService {
       return [];
     }
   }
+
+
+  /// Get rejected candidates for a selector
+  Future<Set<String>> getRejectedCandidatesForSelector({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client
+          .from('matches')
+          .select('target_candidate_id')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId)
+          .eq('selector_status', 'rejected');
+      
+      return response
+          .map((row) => row['target_candidate_id'] as String)
+          .toSet();
+    } catch (error) {
+      print('Error getting rejected candidates: $error');
+      return <String>{};
+    }
+  }
+
+  /// Get approved candidates for a selector
+  Future<Set<String>> getApprovedCandidatesForSelector({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client
+          .from('matches')
+          .select('target_candidate_id')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId)
+          .eq('selector_status', 'approved');
+      
+      return response
+          .map((row) => row['target_candidate_id'] as String)
+          .toSet();
+    } catch (error) {
+      print('Error getting approved candidates: $error');
+      return <String>{};
+    }
+  }
 }

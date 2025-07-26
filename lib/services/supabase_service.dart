@@ -13,10 +13,12 @@ class SupabaseService {
 
   SupabaseService._internal() : _initFuture = _initializeSupabase();
 
-  static const String supabaseUrl =
-      String.fromEnvironment('SUPABASE_URL', defaultValue: "https://haqfiojlxsfwgpznvtbk.supabase.co");
-  static const String supabaseAnonKey =
-      String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhcWZpb2pseHNmd2dwem52dGJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEwMjY3NDYsImV4cCI6MjA2NjYwMjc0Nn0.xBPW9Lmkt7_B801ok4D6K6vqK9avboW6L50qchjFa6o");
+  static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL',
+      defaultValue: "https://haqfiojlxsfwgpznvtbk.supabase.co");
+  static const String supabaseAnonKey = String.fromEnvironment(
+      'SUPABASE_ANON_KEY',
+      defaultValue:
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhcWZpb2pseHNmd2dwem52dGJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEwMjY3NDYsImV4cCI6MjA2NjYwMjc0Nn0.xBPW9Lmkt7_B801ok4D6K6vqK9avboW6L50qchjFa6o");
 
   // Internal initialization logic
   static Future<void> _initializeSupabase() async {

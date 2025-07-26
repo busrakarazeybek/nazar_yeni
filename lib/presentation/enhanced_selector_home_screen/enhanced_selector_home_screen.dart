@@ -43,6 +43,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   final Set<String> _swipedCandidateIds = {}; // class seviyesinde
   // Her aday için gösterilen kart id'lerini tutan map
   final Map<String, Set<String>> _shownCardIdsPerCandidate = {};
+  UserProfile? lastSwipedCandidate;
+  bool _hasCheckedArguments = false;
 
   @override
   void initState() {
@@ -54,8 +56,44 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Sayfa her açıldığında verileri yenile
-    _refreshData();
+    
+    // Only check arguments once
+    if (!_hasCheckedArguments) {
+      _hasCheckedArguments = true;
+      
+      // Check for pre-selected candidate from navigation arguments
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      if (args != null && args.containsKey('selectedCandidateId')) {
+        final selectedCandidateId = args['selectedCandidateId'] as String;
+        print('Pre-selecting candidate with ID: $selectedCandidateId');
+        
+        // Wait for data to load, then select the candidate
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _selectCandidateById(selectedCandidateId);
+        });
+      }
+      
+      // Sayfa her açıldığında verileri yenile
+      _refreshData();
+    }
+  }
+
+  void _selectCandidateById(String candidateId) {
+    try {
+      final candidate = _assignedCandidates.firstWhere(
+        (c) => c.id == candidateId,
+      );
+      
+      print('Found and selecting candidate: ${candidate.fullName}');
+      _onCandidateSelected(candidate);
+    } catch (e) {
+      print('Candidate with ID $candidateId not found in assigned candidates');
+      // If the specific candidate is not found, select the first one if available
+      if (_assignedCandidates.isNotEmpty) {
+        print('Selecting first available candidate: ${_assignedCandidates.first.fullName}');
+        _onCandidateSelected(_assignedCandidates.first);
+      }
+    }
   }
 
   void _initializeAnimations() {
@@ -90,7 +128,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         _error = null;
       });
 
-      final currentUser = AuthProvider().currentUser;
+      final currentUser =
+          Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) {
         throw Exception('Kullanıcı oturumu bulunamadı');
       }
@@ -207,7 +246,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
 
     try {
       final userService = UserService();
-      final currentUser = AuthProvider().currentUser;
+      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) return;
 
       // Use preference-based filtering when a candidate is selected
@@ -246,8 +285,24 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     _filterMatchesForCandidate(candidate);
   }
 
-  void _filterMatchesForCandidate(UserProfile candidate) {
+  void _filterMatchesForCandidate(UserProfile candidate) async {
     final excludedIds = <String>{..._swipedCandidateIds};
+
+    // Add previously rejected and approved candidates
+    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    if (currentUser != null) {
+      final rejectedIds = await _userService.getRejectedCandidatesForSelector(
+        selectorId: currentUser.id,
+        candidateId: candidate.id,
+      );
+      final approvedIds = await _userService.getApprovedCandidatesForSelector(
+        selectorId: currentUser.id,
+        candidateId: candidate.id,
+      );
+      excludedIds.addAll(rejectedIds);
+      excludedIds.addAll(approvedIds);
+    }
+
     for (final p in _selectorProposals) {
       if (p.candidateId == candidate.id &&
           p.status != AcceptanceStatus.pending) {
@@ -285,10 +340,9 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         // İlgi alanı filtresi
         if (candidate.preferredInterests != null &&
             candidate.preferredInterests!.isNotEmpty) {
-          final intersect =
-              match.interests?.toSet().intersection(
-                candidate.preferredInterests!.toSet(),
-              ) ??
+          final intersect = match.interests?.toSet().intersection(
+                    candidate.preferredInterests!.toSet(),
+                  ) ??
               {};
           if (intersect.isEmpty) return false;
         }
@@ -296,9 +350,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         if (candidate.preferredGenders != null &&
             candidate.preferredGenders!.isNotEmpty) {
           final matchGender = match.gender?.toString().toLowerCase() ?? '';
-          final allowedGenders = candidate.preferredGenders!
-              .map((g) => g.toLowerCase())
-              .toList();
+          final allowedGenders =
+              candidate.preferredGenders!.map((g) => g.toLowerCase()).toList();
           if (!allowedGenders.any((g) => matchGender.contains(g))) return false;
         }
         return true;
@@ -331,11 +384,12 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     return score;
   }
 
-  Future<void> _onMatchProposal(UserProfile targetCandidate) async {
+  Future<void> _onMatchProposal(UserProfile targetCandidate,
+      {String selectorStatus = 'approved'}) async {
     if (_selectedCandidate == null) return;
 
     try {
-      final currentUser = AuthProvider().currentUser;
+      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) {
         _showErrorMessage('Kullanıcı oturumu bulunamadı');
         return;
@@ -360,7 +414,9 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
                 ),
                 SizedBox(height: 2.h),
                 Text(
-                  'Eşleştirme önerisi gönderiliyor...',
+                  selectorStatus == 'approved'
+                      ? 'Eşleştirme önerisi gönderiliyor...'
+                      : 'İşleniyor...',
                   style: AppTheme.lightTheme.textTheme.bodyMedium,
                 ),
               ],
@@ -375,6 +431,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         targetCandidateId: targetCandidate.id,
         message:
             '${_selectedCandidate!.fullName} için ${targetCandidate.fullName} ile eşleşme önerisi',
+        selectorStatus: selectorStatus,
       );
 
       // Close loading dialog
@@ -385,13 +442,15 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         _proposalCounter++;
       });
 
-      // Show success message with enhanced animation
-      _showSuccessMessage(
-        '${_selectedCandidate!.fullName} için ${targetCandidate.fullName} ile eşleşme önerisi gönderildi!',
-      );
+      // Show success message only for approved status
+      if (selectorStatus == 'approved') {
+        _showSuccessMessage(
+          '${_selectedCandidate!.fullName} için ${targetCandidate.fullName} ile eşleşme önerisi gönderildi!',
+        );
+      }
+      // No message for rejected cards - silent rejection
 
-      // Refresh data
-      await _refreshData();
+      // Refresh data kaldırıldı - kartı zaten sildik, yeniden yüklemeye gerek yok
     } catch (e) {
       // Close loading dialog if open
       if (Navigator.canPop(context)) {
@@ -465,8 +524,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     final client = await SupabaseService().client;
     await client
         .from('selector_candidate_requests')
-        .update({'status': 'accepted'})
-        .eq('id', req['id']);
+        .update({'status': 'accepted'}).eq('id', req['id']);
 
     // Gerçek ilişkiyi oluştur
     if (req['type'] == 'selector') {
@@ -489,8 +547,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     final client = await SupabaseService().client;
     await client
         .from('selector_candidate_requests')
-        .update({'status': 'rejected'})
-        .eq('id', req['id']);
+        .update({'status': 'rejected'}).eq('id', req['id']);
     setState(() {});
   }
 
@@ -562,41 +619,40 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = AuthProvider().currentUser;
     return Scaffold(
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       body: SafeArea(
         child: _isLoading
             ? _buildLoadingState()
             : _error != null
-            ? _buildErrorState()
-            : RefreshIndicator(
-                onRefresh: _refreshData,
-                color: AppTheme.lightTheme.primaryColor,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: AnimatedBuilder(
-                    animation: _fadeAnimation,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _fadeAnimation.value,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeader(),
-                            SizedBox(height: 2.h),
-                            SizedBox(height: 3.h),
-                            _buildTopSection(),
-                            SizedBox(height: 3.h),
-                            _buildBottomSection(),
-                            SizedBox(height: 4.h),
-                          ],
-                        ),
-                      );
-                    },
+                ? _buildErrorState()
+                : RefreshIndicator(
+                    onRefresh: _refreshData,
+                    color: AppTheme.lightTheme.primaryColor,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: AnimatedBuilder(
+                        animation: _fadeAnimation,
+                        builder: (context, child) {
+                          return Opacity(
+                            opacity: _fadeAnimation.value,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildHeader(),
+                                SizedBox(height: 2.h),
+                                SizedBox(height: 3.h),
+                                _buildTopSection(),
+                                SizedBox(height: 3.h),
+                                _buildBottomSection(),
+                                SizedBox(height: 4.h),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
-                ),
-              ),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
@@ -687,8 +743,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   }
 
   Widget _buildHeader() {
-    final currentUser = AuthProvider().currentUser;
-    final displayName = currentUser?.email?.split('@').first ?? 'Görücü';
+    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    final displayName = currentUser?.fullName?.split(' ').first ?? 'Görücü';
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -786,6 +842,17 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
                   ),
                 ),
               ),
+              // Refresh butonu ekle
+              IconButton(
+                onPressed: _refreshData,
+                icon: Icon(Icons.refresh, size: 20),
+                style: IconButton.styleFrom(
+                  backgroundColor:
+                      AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1),
+                  foregroundColor: AppTheme.lightTheme.primaryColor,
+                ),
+              ),
+              SizedBox(width: 1.w),
               ElevatedButton.icon(
                 onPressed: _showAddCandidateModal,
                 icon: Icon(Icons.person_add, size: 18), // Küçültüldü
@@ -834,24 +901,36 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       selectedCandidate: _selectedCandidate,
       onRefresh: _refreshData,
       onMatchProposal: _onMatchProposal,
-      onCardSwiped: _onCardSwiped, // yeni ekle
+      onCardSwiped: _onCardSwiped,
     );
   }
 
-  void _onCardSwiped(UserProfile candidate, bool isRightSwipe) async {
-    // Kartı swipe edince ilgili adaya ait shownCardIds'e ekle
-    final candidateId = _selectedCandidate?.id;
-    if (candidateId != null) {
-      _shownCardIdsPerCandidate.putIfAbsent(candidateId, () => <String>{});
-      _shownCardIdsPerCandidate[candidateId]!.add(candidate.id);
+  void _onCardSwiped(String candidateName, bool isRightSwipe) {
+    // Stack'te sadece 3 kart gösteriliyor: index=0 arkada, index=2 önde
+    final visibleCount = _filteredMatches.length.clamp(0, 3);
+    final topVisualIndex = visibleCount - 1; // En üstteki kartın indexi (max 2)
+    final topVisualCard =
+        topVisualIndex >= 0 ? _filteredMatches[topVisualIndex] : null;
+
+    if (isRightSwipe && _selectedCandidate != null && topVisualCard != null) {
+      // ÖNCE kartı listeden çıkar
+      setState(() {
+        _filteredMatches.removeAt(topVisualIndex);
+      });
+
+      // SONRA eşleştirme işlemi yap - selector_status: 'approved'
+      _onMatchProposal(topVisualCard, selectorStatus: 'approved');
+    } else if (!isRightSwipe &&
+        topVisualCard != null &&
+        _selectedCandidate != null) {
+      // ÖNCE kartı listeden çıkar
+      setState(() {
+        _filteredMatches.removeAt(topVisualIndex);
+      });
+
+      // SONRA rejection kaydı yap - selector_status: 'rejected'
+      _onMatchProposal(topVisualCard, selectorStatus: 'rejected');
     }
-    if (isRightSwipe) {
-      await _onMatchProposal(candidate);
-    }
-    setState(() {
-      _swipedCandidateIds.add(candidate.id);
-      _filteredMatches.removeWhere((c) => c.id == candidate.id);
-    });
   }
 
   Widget _buildBottomNavigationBar() {
@@ -945,7 +1024,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
 
   Future<void> _addCandidate(UserProfile candidate) async {
     try {
-      final currentUser = AuthProvider().currentUser;
+      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) return;
       // Adaya istek gönder
       final client = await SupabaseService().client;

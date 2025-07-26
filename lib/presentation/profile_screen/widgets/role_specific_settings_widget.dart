@@ -45,6 +45,17 @@ class _RoleSpecificSettingsWidgetState
     widget.onDataChanged();
   }
 
+  void _showAgeWarning() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Yaş 18-100 arasında olmalıdır'),
+        backgroundColor: AppTheme.errorColor,
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   Widget _buildSelectorSettings() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,11 +151,32 @@ class _RoleSpecificSettingsWidgetState
               child: TextFormField(
                 initialValue:
                     widget.userData['preferredAgeMin']?.toString() ?? '',
-                decoration: InputDecoration(labelText: 'En küçük yaş'),
+                decoration: InputDecoration(
+                  labelText: 'En küçük yaş',
+                  helperText: '18-100 arası',
+                ),
                 keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return null;
+                  final parsedValue = int.tryParse(value);
+                  if (parsedValue == null) return 'Geçerli bir sayı girin';
+                  if (parsedValue < 18 || parsedValue > 100) {
+                    return '18-100 arası olmalı';
+                  }
+                  return null;
+                },
                 onChanged: (val) {
-                  widget.userData['preferredAgeMin'] = int.tryParse(val);
-                  widget.onDataChanged();
+                  final parsedValue = int.tryParse(val);
+                  if (parsedValue != null && parsedValue >= 18 && parsedValue <= 100) {
+                    widget.userData['preferredAgeMin'] = parsedValue;
+                    widget.onDataChanged();
+                  } else if (val.isEmpty) {
+                    widget.userData['preferredAgeMin'] = null;
+                    widget.onDataChanged();
+                  } else if (parsedValue != null && (parsedValue < 18 || parsedValue > 100)) {
+                    // Geçersiz yaş için uyarı göster
+                    _showAgeWarning();
+                  }
                 },
               ),
             ),
@@ -153,11 +185,36 @@ class _RoleSpecificSettingsWidgetState
               child: TextFormField(
                 initialValue:
                     widget.userData['preferredAgeMax']?.toString() ?? '',
-                decoration: InputDecoration(labelText: 'En büyük yaş'),
+                decoration: InputDecoration(
+                  labelText: 'En büyük yaş',
+                  helperText: '18-100 arası',
+                ),
                 keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return null;
+                  final parsedValue = int.tryParse(value);
+                  if (parsedValue == null) return 'Geçerli bir sayı girin';
+                  if (parsedValue < 18 || parsedValue > 100) {
+                    return '18-100 arası olmalı';
+                  }
+                  final minAge = widget.userData['preferredAgeMin'] as int?;
+                  if (minAge != null && parsedValue < minAge) {
+                    return 'En küçük yaştan büyük olmalı';
+                  }
+                  return null;
+                },
                 onChanged: (val) {
-                  widget.userData['preferredAgeMax'] = int.tryParse(val);
-                  widget.onDataChanged();
+                  final parsedValue = int.tryParse(val);
+                  if (parsedValue != null && parsedValue >= 18 && parsedValue <= 100) {
+                    widget.userData['preferredAgeMax'] = parsedValue;
+                    widget.onDataChanged();
+                  } else if (val.isEmpty) {
+                    widget.userData['preferredAgeMax'] = null;
+                    widget.onDataChanged();
+                  } else if (parsedValue != null && (parsedValue < 18 || parsedValue > 100)) {
+                    // Geçersiz yaş için uyarı göster
+                    _showAgeWarning();
+                  }
                 },
               ),
             ),
@@ -179,6 +236,13 @@ class _RoleSpecificSettingsWidgetState
             widget.onDataChanged();
           },
         ),
+        SizedBox(height: 1.h),
+        Text(
+          'Tercih edilen cinsiyet',
+          style: AppTheme.lightTheme.textTheme.bodyMedium,
+        ),
+        SizedBox(height: 1.h),
+        _buildGenderSelection(),
         SizedBox(height: 1.h),
         TextFormField(
           initialValue:
@@ -258,6 +322,48 @@ class _RoleSpecificSettingsWidgetState
       default:
         return '';
     }
+  }
+
+  Widget _buildGenderSelection() {
+    final selectedGenders = (widget.userData['preferredGenders'] as List?)?.cast<String>() ?? [];
+    final genderOptions = {
+      'male': 'Erkek',
+      'female': 'Kadın',
+      'other': 'Diğer',
+      'preferNotToSay': 'Belirtmek istemiyorum'
+    };
+
+    return Wrap(
+      spacing: 2.w,
+      runSpacing: 1.h,
+      children: genderOptions.entries.map((entry) {
+        final isSelected = selectedGenders.contains(entry.key);
+        return FilterChip(
+          label: Text(entry.value),
+          selected: isSelected,
+          onSelected: (selected) {
+            List<String> newGenders = List.from(selectedGenders);
+            if (selected) {
+              if (!newGenders.contains(entry.key)) {
+                newGenders.add(entry.key);
+              }
+            } else {
+              newGenders.remove(entry.key);
+            }
+            widget.userData['preferredGenders'] = newGenders;
+            widget.onDataChanged();
+            setState(() {});
+          },
+          backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+          selectedColor: AppTheme.lightTheme.colorScheme.primaryContainer,
+          labelStyle: TextStyle(
+            color: isSelected 
+                ? AppTheme.lightTheme.colorScheme.onPrimaryContainer
+                : AppTheme.lightTheme.colorScheme.onSurface,
+          ),
+        );
+      }).toList(),
+    );
   }
 
   Widget _buildSettingTile(

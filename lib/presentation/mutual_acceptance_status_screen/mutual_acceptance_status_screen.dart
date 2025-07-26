@@ -68,6 +68,7 @@ class _MutualAcceptanceStatusScreenState
           targetCandidateId: 'candidate_2',
           status: AcceptanceStatus.pending,
           targetStatus: AcceptanceStatus.pending,
+          selectorStatus: AcceptanceStatus.accepted,
           statusEnum: MatchProposalStatus.pending,
           createdAt: DateTime.now().subtract(const Duration(hours: 2)),
           updatedAt: DateTime.now().subtract(const Duration(minutes: 30)),

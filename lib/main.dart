@@ -4,6 +4,8 @@ import 'package:sizer/sizer.dart';
 
 import '../widgets/custom_error_widget.dart';
 import 'core/app_export.dart';
+import 'services/image_upload_service.dart';
+import 'presentation/widgets/realtime_updates_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +15,13 @@ void main() async {
     await SupabaseService().initialize();
   } catch (e) {
     debugPrint('Failed to initialize Supabase: $e');
+  }
+
+  // Initialize Image Upload Service
+  try {
+    await ImageUploadService().initializeStorage();
+  } catch (e) {
+    debugPrint('Failed to initialize Image Upload Service: $e');
   }
 
   ErrorWidget.builder = (FlutterErrorDetails details) {
@@ -48,7 +57,9 @@ class MyApp extends StatelessWidget {
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(1.0),
               ),
-              child: child!,
+              child: RealtimeUpdatesWidget(
+                child: child!,
+              ),
             );
           },
           debugShowCheckedModeBanner: false,

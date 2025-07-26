@@ -11,6 +11,7 @@ class MatchProposalService {
     required String candidateId,
     required String targetCandidateId,
     String? message,
+    String selectorStatus = 'approved',
   }) async {
     try {
       final client = await _supabaseService.client;
@@ -19,6 +20,7 @@ class MatchProposalService {
         'candidate_id': candidateId,
         'target_candidate_id': targetCandidateId,
         'selector_message': message,
+        'selector_status': selectorStatus,
         'status': 'pending',
         'target_status': 'pending',
       }).select('''
@@ -40,12 +42,14 @@ class MatchProposalService {
     required String candidateId,
     required String targetCandidateId,
     String? message,
+    String selectorStatus = 'approved',
   }) async {
     return createProposal(
       selectorId: selectorId,
       candidateId: candidateId,
       targetCandidateId: targetCandidateId,
       message: message,
+      selectorStatus: selectorStatus,
     );
   }
 
@@ -128,18 +132,35 @@ class MatchProposalService {
       // First get the current proposal to determine which candidate is responding
       final currentProposal = await client
           .from('matches')
-          .select('candidate_id, target_candidate_id')
+          .select('candidate_id, target_candidate_id, status, target_status')
           .eq('id', proposalId)
           .single();
 
       Map<String, dynamic> updateData = {};
+      String newStatus;
+      String newTargetStatus;
 
       if (currentProposal['candidate_id'] == candidateId) {
-        updateData['status'] = status.toString().split('.').last;
+        // Candidate is responding
+        newStatus = status.toString().split('.').last;
+        newTargetStatus = currentProposal['target_status'] ?? 'pending';
+        updateData['status'] = newStatus;
       } else if (currentProposal['target_candidate_id'] == candidateId) {
-        updateData['target_status'] = status.toString().split('.').last;
+        // Target candidate is responding
+        newStatus = currentProposal['status'] ?? 'pending';
+        newTargetStatus = status.toString().split('.').last;
+        updateData['target_status'] = newTargetStatus;
       } else {
         throw Exception('Bu öneriye yanıt verme yetkiniz yok');
+      }
+
+      // Check for match after update - both candidates must accept
+      if (newStatus == 'accepted' && newTargetStatus == 'accepted') {
+        updateData['overall_status'] = 'matched';
+      } else if (newStatus == 'rejected' || newTargetStatus == 'rejected') {
+        updateData['overall_status'] = 'rejected';
+      } else {
+        updateData['overall_status'] = 'pending';
       }
 
       final response = await client

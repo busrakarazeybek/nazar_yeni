@@ -146,8 +146,8 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
       child: Column(
         children: [
           Container(
-            width: 15.w,
-            height: 15.w,
+            width: 12.w,
+            height: 12.w,
             decoration: BoxDecoration(
               color: AppTheme.lightTheme.colorScheme.primary
                   .withValues(alpha: 0.1),
@@ -157,11 +157,11 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
               child: CustomIconWidget(
                 iconName: icon,
                 color: AppTheme.lightTheme.colorScheme.primary,
-                size: 28,
+                size: 24,
               ),
             ),
           ),
-          SizedBox(height: 1.h),
+          SizedBox(height: 0.8.h),
           Text(
             label,
             style: AppTheme.lightTheme.textTheme.bodySmall,
@@ -178,8 +178,8 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
         // Emoji Picker
         if (_showEmojiPicker)
           Container(
-            height: 8.h,
-            padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+            height: 6.h,
+            padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 0.8.h),
             decoration: BoxDecoration(
               color: AppTheme.lightTheme.colorScheme.surface,
               border: Border(
@@ -198,8 +198,8 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                   onTap: () => _addEmoji(_quickEmojis[index]),
                   child: Container(
                     width: 12.w,
-                    height: 6.h,
-                    margin: EdgeInsets.only(right: 2.w),
+                    height: 5.h,
+                    margin: EdgeInsets.only(right: 1.5.w),
                     decoration: BoxDecoration(
                       color: AppTheme.lightTheme.colorScheme.surface,
                       borderRadius: BorderRadius.circular(8),
@@ -212,7 +212,7 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                     child: Center(
                       child: Text(
                         _quickEmojis[index],
-                        style: TextStyle(fontSize: 20.sp),
+                        style: TextStyle(fontSize: 16.sp),
                       ),
                     ),
                   ),
@@ -223,15 +223,19 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
 
         // Input Area
         Container(
-          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+          padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
           decoration: BoxDecoration(
-            color: AppTheme.lightTheme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(
-                color: AppTheme.lightTheme.colorScheme.outline
-                    .withValues(alpha: 0.2),
-                width: 1,
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(13),
+                blurRadius: 15,
+                offset: Offset(0, -2),
               ),
+            ],
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
             ),
           ),
           child: Row(
@@ -241,10 +245,14 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                 onTap: _showImagePicker,
                 child: Container(
                   padding: EdgeInsets.all(2.w),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    shape: BoxShape.circle,
+                  ),
                   child: CustomIconWidget(
                     iconName: 'attach_file',
-                    color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                    size: 24,
+                    color: Colors.grey[600]!,
+                    size: 18,
                   ),
                 ),
               ),
@@ -252,17 +260,17 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
               // Text Input
               Expanded(
                 child: Container(
+                  margin: EdgeInsets.symmetric(horizontal: 2.w),
                   constraints: BoxConstraints(
-                    minHeight: 6.h,
-                    maxHeight: 20.h,
+                    minHeight: 5.h,
+                    maxHeight: 16.h,
                   ),
                   decoration: BoxDecoration(
-                    color: AppTheme.lightTheme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(24),
+                    color: Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(25),
                     border: Border.all(
-                      color: AppTheme.lightTheme.colorScheme.outline
-                          .withValues(alpha: 0.3),
-                      width: 1,
+                      color: Colors.transparent,
+                      width: 2,
                     ),
                   ),
                   child: TextField(
@@ -274,13 +282,14 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                     style: AppTheme.lightTheme.textTheme.bodyMedium,
                     decoration: InputDecoration(
                       hintText: 'Mesajınızı yazın...',
-                      hintStyle:
-                          AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      hintStyle: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
                       ),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.symmetric(
-                        horizontal: 4.w,
+                        horizontal: 3.w,
                         vertical: 1.5.h,
                       ),
                     ),
@@ -300,12 +309,18 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                 onTap: _toggleEmojiPicker,
                 child: Container(
                   padding: EdgeInsets.all(2.w),
+                  decoration: BoxDecoration(
+                    color: _showEmojiPicker 
+                        ? Color(0xFF6C63FF).withAlpha(51)
+                        : Colors.grey[100],
+                    shape: BoxShape.circle,
+                  ),
                   child: CustomIconWidget(
                     iconName: _showEmojiPicker ? 'keyboard' : 'emoji_emotions',
                     color: _showEmojiPicker
-                        ? AppTheme.lightTheme.colorScheme.primary
-                        : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                    size: 24,
+                        ? Color(0xFF6C63FF)
+                        : Colors.grey[600]!,
+                    size: 18,
                   ),
                 ),
               ),
@@ -313,23 +328,40 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
               // Send Button
               GestureDetector(
                 onTap: _isTyping ? widget.onSend : null,
-                child: Container(
-                  width: 12.w,
-                  height: 12.w,
+                child: AnimatedContainer(
+                  duration: Duration(milliseconds: 200),
+                  width: 10.w,
+                  height: 10.w,
                   decoration: BoxDecoration(
-                    color: _isTyping
-                        ? AppTheme.lightTheme.colorScheme.primary
-                        : AppTheme.lightTheme.colorScheme.outline
-                            .withValues(alpha: 0.3),
+                    gradient: _isTyping
+                        ? LinearGradient(
+                            colors: [
+                              Color(0xFF6C63FF),
+                              Color(0xFF9C27B0),
+                            ],
+                          )
+                        : LinearGradient(
+                            colors: [
+                              Colors.grey[300]!,
+                              Colors.grey[400]!,
+                            ],
+                          ),
                     shape: BoxShape.circle,
+                    boxShadow: _isTyping
+                        ? [
+                            BoxShadow(
+                              color: Color(0xFF6C63FF).withAlpha(77),
+                              blurRadius: 8,
+                              offset: Offset(0, 3),
+                            ),
+                          ]
+                        : [],
                   ),
                   child: Center(
                     child: CustomIconWidget(
                       iconName: 'send',
-                      color: _isTyping
-                          ? AppTheme.lightTheme.colorScheme.onPrimary
-                          : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                      size: 20,
+                      color: _isTyping ? Colors.white : Colors.grey[600]!,
+                      size: 16,
                     ),
                   ),
                 ),
