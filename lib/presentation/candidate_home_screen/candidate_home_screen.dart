@@ -296,42 +296,11 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       appBar: AppBar(
         backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
         elevation: 0,
-        title: Text(
-          'Eşleşme Önerileri',
-          style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _loadData,
-            icon: CustomIconWidget(
-              iconName: 'refresh',
-              color: AppTheme.lightTheme.primaryColor,
-              size: 24.w,
-            ),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.lightTheme.primaryColor,
-          unselectedLabelColor: AppTheme.textSecondaryLight,
-          indicatorColor: AppTheme.lightTheme.primaryColor,
-          tabs: [
-            Tab(text: 'Seçicilerim'),
-            Tab(text: 'Tüm Öneriler'),
-          ],
-        ),
+        automaticallyImplyLeading: false, // Geri tuşunu kaldır
       ),
       body: RefreshIndicator(
         onRefresh: _loadData,
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildBody(), // Seçicilerim sekmesi
-            _buildAllProposalsBody(), // Tüm öneriler sekmesi
-          ],
-        ),
+        child: _buildBody(),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
@@ -350,7 +319,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     final currentUser = authProvider.currentUserProfile;
 
     return ListView(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.only(left: 4.w, right: 4.w, bottom: 4.w),
       children: [
         if (currentUser != null) _buildIncomingRequestsSection(currentUser.id),
         // Only show empty screen if not loading AND selectors are actually empty
@@ -376,7 +345,6 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildMySelectorsSection() {
     return Container(
-      margin: EdgeInsets.only(bottom: 2.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -405,7 +373,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                         ),
                         SizedBox(width: 2.w),
                         Text(
-                          'Kimler beni seçiyor?',
+                          'Görücülerim',
                           style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: AppTheme.lightTheme.colorScheme.onSurface,
@@ -419,7 +387,6 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               _buildAddSelectorButton(),
             ],
           ),
-          SizedBox(height: 1.2.h),
           // Selectors horizontal list
           AnimatedBuilder(
             animation: _selectionAnimation,
@@ -461,17 +428,18 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           onTap: _handleAddSelector,
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+            padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.person_add_rounded, color: Colors.white, size: 5.w),
-                SizedBox(width: 2.w),
+                Icon(Icons.person_add_rounded, color: Colors.white, size: 3.w),
+                SizedBox(width: 1.w),
                 Text(
-                  'Görücü Ekle',
-                  style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                  'Ekle',
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
+                    fontSize: 10.sp,
                   ),
                 ),
               ],
@@ -527,8 +495,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 AnimatedContainer(
                   duration: Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
-                  width: isSelected ? 22.w : 20.w,
-                  height: isSelected ? 22.w : 20.w,
+                  width: isSelected ? 16.w : 15.w,
+                  height: isSelected ? 16.w : 15.w,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
@@ -555,8 +523,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                     child: selector.imageUrl != null && selector.imageUrl!.isNotEmpty
                         ? CustomImageWidget(
                             imageUrl: selector.imageUrl!,
-                            width: isSelected ? 22.w : 20.w,
-                            height: isSelected ? 22.w : 20.w,
+                            width: isSelected ? 16.w : 15.w,
+                            height: isSelected ? 16.w : 15.w,
                             fit: BoxFit.cover,
                             errorWidget: _buildDefaultSelectorAvatar(selector, isSelected),
                           )
@@ -607,7 +575,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                     : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
               ),
               child: Container(
-                width: 22.w,
+                width: 16.w,
                 child: Text(
                   selector.fullName.split(' ').first,
                   textAlign: TextAlign.center,
@@ -624,8 +592,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildDefaultSelectorAvatar(UserProfile selector, bool isSelected) {
     return Container(
-      width: isSelected ? 22.w : 20.w,
-      height: isSelected ? 22.w : 20.w,
+      width: isSelected ? 16.w : 15.w,
+      height: isSelected ? 16.w : 15.w,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
@@ -638,7 +606,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       child: Icon(
         Icons.person,
         color: Colors.white,
-        size: isSelected ? 8.w : 7.w,
+        size: isSelected ? 6.w : 5.w,
       ),
     );
   }
@@ -653,7 +621,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       duration: Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       margin: EdgeInsets.only(right: 3.w),
-      width: 22.w,
+      width: 16.w,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -794,6 +762,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   }
 
   void _handleAddSelector() async {
+    print('Add selector button tapped'); // Debug
     final result = await showModalBottomSheet<AddSelectorResult>(
       context: context,
       isScrollControlled: true,
@@ -1557,11 +1526,12 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildBottomNavigationBar() {
     return BottomNavigationBar(
-      currentIndex: _tabController.index,
+      currentIndex: 0, // Always highlight home
       onTap: (index) {
+        print('Bottom nav tapped: $index'); // Debug
         switch (index) {
           case 0:
-            _tabController.animateTo(0);
+            // Already on home screen
             break;
           case 1:
             // Badge'i kalıcı olarak sıfırla ve matches screen'e git

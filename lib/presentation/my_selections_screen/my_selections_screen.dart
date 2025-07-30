@@ -1101,7 +1101,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               
               // Match text
               Text(
-                "IT'S A MATCH!",
+                "EŞLEŞTİNİZ",
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 28.sp,

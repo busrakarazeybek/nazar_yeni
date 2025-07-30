@@ -160,10 +160,17 @@ class _SuggestedCandidatesSectionState
   Widget _buildSectionHeader() {
     return Row(
       children: [
-        CustomIconWidget(
-          iconName: 'person_search',
-          color: AppTheme.lightTheme.primaryColor,
-          size: 24.w,
+        Container(
+          padding: EdgeInsets.all(2.w),
+          decoration: BoxDecoration(
+            color: AppTheme.lightTheme.primaryColor.withAlpha(26),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: CustomIconWidget(
+            iconName: 'person_search',
+            color: AppTheme.lightTheme.primaryColor,
+            size: 5.w,
+          ),
         ),
         SizedBox(width: 2.w),
         Expanded(
@@ -172,8 +179,9 @@ class _SuggestedCandidatesSectionState
             children: [
               Text(
                 'Önerilen Adaylar',
-                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.bold,
+                  color: AppTheme.lightTheme.colorScheme.onSurface,
                 ),
               ),
               Text(
@@ -204,55 +212,171 @@ class _SuggestedCandidatesSectionState
 
     return Container(
       margin: EdgeInsets.only(bottom: 2.h),
+      width: 85.w,
+      height: 65.h, // Sabit yükseklik
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: AppTheme.lightTheme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20.w),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(20),
-            blurRadius: 15,
-            offset: Offset(0, 4),
+            color: AppTheme.shadowLight,
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: AppTheme.shadowLight.withValues(alpha: 0.3),
+            blurRadius: 40,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
-      child: Column(
+      child: Stack(
         children: [
-          // Candidate info section
-          Padding(
-            padding: EdgeInsets.all(4.w),
-            child: Column(
-              children: [
-                _buildCandidateHeader(proposal),
-                SizedBox(height: 2.h),
-                // Bilgi mesajı
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: isDirectCandidate
-                      ? Text(
-                          '${proposal.selectorName ?? 'Bir seçici'} senin için önerdi',
-                          style: TextStyle(
-                            color: AppTheme.lightTheme.primaryColor,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12.sp,
-                          ),
-                        )
-                      : SizedBox
-                          .shrink(), // target_candidate ise seçici adı gösterme
+          // Background image
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20.w),
+            child: CustomImageWidget(
+              imageUrl: otherCandidateImage,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              errorWidget: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.lightTheme.colorScheme.surfaceContainerHighest,
+                      AppTheme.lightTheme.colorScheme.surfaceContainerHigh,
+                    ],
+                  ),
                 ),
-                SizedBox(height: 1.h),
-                _buildCandidateInfo(
-                  name: otherCandidateName,
-                  imageUrl: otherCandidateImage,
-                  bio: otherCandidateBio,
+                child: Center(
+                  child: CustomIconWidget(
+                    iconName: 'person',
+                    color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                    size: 64.w,
+                  ),
                 ),
-                SizedBox(height: 2.h),
-                _buildCompatibilityHighlights(),
-              ],
+              ),
             ),
           ),
-
-          // Action buttons
-          _buildActionButtons(proposal),
+          // Gradient overlay
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20.w),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.1),
+                  Colors.black.withValues(alpha: 0.8),
+                ],
+                stops: const [0.0, 0.6, 1.0],
+              ),
+            ),
+          ),
+          // Selector info badge
+          if (isDirectCandidate)
+            Positioned(
+              top: 4.w,
+              right: 4.w,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 3.w,
+                  vertical: 1.h,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.primaryColor.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(6.w),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CustomIconWidget(
+                      iconName: 'person_search',
+                      color: Colors.white,
+                      size: 12.w,
+                    ),
+                    SizedBox(width: 1.w),
+                    Text(
+                      '${proposal.selectorName ?? 'Seçici'}',
+                      style: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          // Profile information
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.all(4.w),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(20.w),
+                  bottomRight: Radius.circular(20.w),
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.3),
+                  ],
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    otherCandidateName,
+                    style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      shadows: [
+                        Shadow(
+                          offset: const Offset(0, 1),
+                          blurRadius: 3,
+                          color: Colors.black.withValues(alpha: 0.5),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (otherCandidateBio != null && otherCandidateBio!.isNotEmpty) ...[
+                    SizedBox(height: 0.5.h),
+                    Text(
+                      otherCandidateBio!,
+                      style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white70,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  SizedBox(height: 2.h),
+                  // Action buttons
+                  _buildEnhancedActionButtons(proposal),
+                ],
+              ),
+            ),
+          ),
 
           // Karşılıklı onayda mesajlaşma butonu
           if (proposal.status == AcceptanceStatus.accepted &&
@@ -598,5 +722,90 @@ class _SuggestedCandidatesSectionState
     } else {
       return 'Az önce';
     }
+  }
+
+  Widget _buildEnhancedActionButtons(MatchProposal proposal) {
+    return Row(
+      children: [
+        // Reddet butonu
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withValues(alpha: 0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: FloatingActionButton(
+            heroTag: "reject_${proposal.id}",
+            mini: true,
+            onPressed: () => widget.onRejectProposal(proposal),
+            backgroundColor: Colors.red,
+            elevation: 0,
+            child: Icon(
+              Icons.close_rounded,
+              color: Colors.white,
+              size: 6.w,
+            ),
+          ),
+        ),
+        SizedBox(width: 3.w),
+        // Nazar boncuğu ikonu (orta)
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withValues(alpha: 0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: FloatingActionButton(
+            heroTag: "nazar_${proposal.id}",
+            mini: true,
+            onPressed: () {}, // Boş fonksiyon - sadece dekoratif
+            backgroundColor: Colors.blue[700],
+            elevation: 0,
+            child: Icon(
+              Icons.remove_red_eye,
+              color: Colors.white,
+              size: 5.w,
+            ),
+          ),
+        ),
+        SizedBox(width: 3.w),
+        // Kabul et butonu
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withValues(alpha: 0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: FloatingActionButton(
+            heroTag: "accept_${proposal.id}",
+            mini: true,
+            onPressed: () => widget.onAcceptProposal(proposal),
+            backgroundColor: Colors.green,
+            elevation: 0,
+            child: Icon(
+              Icons.favorite_rounded,
+              color: Colors.white,
+              size: 6.w,
+            ),
+          ),
+        ),
+      ],
+      mainAxisAlignment: MainAxisAlignment.center,
+    );
   }
 }
