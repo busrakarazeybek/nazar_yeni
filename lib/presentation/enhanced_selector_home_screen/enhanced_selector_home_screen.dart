@@ -56,23 +56,24 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // Only check arguments once
     if (!_hasCheckedArguments) {
       _hasCheckedArguments = true;
-      
+
       // Check for pre-selected candidate from navigation arguments
-      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       if (args != null && args.containsKey('selectedCandidateId')) {
         final selectedCandidateId = args['selectedCandidateId'] as String;
         print('Pre-selecting candidate with ID: $selectedCandidateId');
-        
+
         // Wait for data to load, then select the candidate
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _selectCandidateById(selectedCandidateId);
         });
       }
-      
+
       // Sayfa her açıldığında verileri yenile
       _refreshData();
     }
@@ -83,14 +84,15 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       final candidate = _assignedCandidates.firstWhere(
         (c) => c.id == candidateId,
       );
-      
+
       print('Found and selecting candidate: ${candidate.fullName}');
       _onCandidateSelected(candidate);
     } catch (e) {
       print('Candidate with ID $candidateId not found in assigned candidates');
       // If the specific candidate is not found, select the first one if available
       if (_assignedCandidates.isNotEmpty) {
-        print('Selecting first available candidate: ${_assignedCandidates.first.fullName}');
+        print(
+            'Selecting first available candidate: ${_assignedCandidates.first.fullName}');
         _onCandidateSelected(_assignedCandidates.first);
       }
     }
@@ -246,7 +248,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
 
     try {
       final userService = UserService();
-      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      final currentUser =
+          Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) return;
 
       // Use preference-based filtering when a candidate is selected
@@ -289,7 +292,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     final excludedIds = <String>{..._swipedCandidateIds};
 
     // Add previously rejected and approved candidates
-    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    final currentUser =
+        Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
     if (currentUser != null) {
       final rejectedIds = await _userService.getRejectedCandidatesForSelector(
         selectorId: currentUser.id,
@@ -389,7 +393,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     if (_selectedCandidate == null) return;
 
     try {
-      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      final currentUser =
+          Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) {
         _showErrorMessage('Kullanıcı oturumu bulunamadı');
         return;
@@ -639,11 +644,9 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildHeader(),
-                                SizedBox(height: 2.h),
-                                SizedBox(height: 3.h),
+                                SizedBox(height: 1.h),
                                 _buildTopSection(),
-                                SizedBox(height: 3.h),
+                                SizedBox(height: 2.h),
                                 _buildBottomSection(),
                                 SizedBox(height: 4.h),
                               ],
@@ -743,7 +746,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   }
 
   Widget _buildHeader() {
-    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    final currentUser =
+        Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
     final displayName = currentUser?.fullName?.split(' ').first ?? 'Görücü';
 
     return Container(
@@ -836,7 +840,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
               Expanded(
                 child: Text(
                   'Kimin için seçiyorsun?',
-                  style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                  style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: AppTheme.lightTheme.colorScheme.onSurface,
                   ),
@@ -1024,7 +1028,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
 
   Future<void> _addCandidate(UserProfile candidate) async {
     try {
-      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      final currentUser =
+          Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) return;
       // Adaya istek gönder
       final client = await SupabaseService().client;

@@ -29,15 +29,45 @@ class SuggestedCandidatesSection extends StatefulWidget {
 }
 
 class _SuggestedCandidatesSectionState
-    extends State<SuggestedCandidatesSection> {
+    extends State<SuggestedCandidatesSection> with TickerProviderStateMixin {
   bool _isProcessing = false;
   MatchProposal? _processingProposal;
   late List<MatchProposal> _localProposals;
+  Set<String> _nazerBoncuguPressed = {}; // Nazar boncuğu basılan kartları takip et
+  Set<String> _expandedCards = {}; // Genişletilmiş kartları takip et
+  
+  // Nazar boncuğu animasyonu için
+  late AnimationController _nazarAnimationController;
+  late Animation<double> _nazarScaleAnimation;
+  late Animation<double> _nazarOpacityAnimation;
+  bool _showNazarOverlay = false;
 
   @override
   void initState() {
     super.initState();
     _localProposals = List.from(widget.proposals);
+    
+    // Nazar boncuğu animasyon controller'ını başlat
+    _nazarAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    
+    _nazarScaleAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _nazarAnimationController,
+      curve: Curves.elasticOut,
+    ));
+    
+    _nazarOpacityAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _nazarAnimationController,
+      curve: Interval(0.7, 1.0, curve: Curves.easeOut),
+    ));
   }
 
   @override
@@ -46,6 +76,12 @@ class _SuggestedCandidatesSectionState
     if (oldWidget.proposals != widget.proposals) {
       _localProposals = List.from(widget.proposals);
     }
+  }
+
+  @override
+  void dispose() {
+    _nazarAnimationController.dispose();
+    super.dispose();
   }
 
   void _handleAccept(MatchProposal proposal) async {
@@ -118,6 +154,63 @@ class _SuggestedCandidatesSectionState
     }
   }
 
+  void _handleNazarBoncugu(MatchProposal proposal) async {
+    setState(() {
+      _nazerBoncuguPressed.add(proposal.id);
+      _showNazarOverlay = true;
+    });
+    
+    // Backend'e nazar boncuğu gönder
+    try {
+      await MatchService().sendNazarBoncugu(
+        matchId: proposal.id, // MatchProposal ID'sini kullan (şimdilik)
+        fromUserId: widget.currentUser.id,
+        fromUserName: widget.currentUser.fullName,
+      );
+    } catch (e) {
+      print('Nazar boncuğu gönderilemedi: $e');
+    }
+    
+    // Kocaman nazar boncuğu animasyonunu başlat
+    _nazarAnimationController.forward().then((_) {
+      setState(() {
+        _showNazarOverlay = false;
+      });
+      _nazarAnimationController.reset();
+      
+      // Animasyon bittikten sonra kartı kabul et (sağa kaydır)
+      _handleAccept(proposal);
+    });
+    
+    // Bildirim göster
+    Future.delayed(Duration(milliseconds: 500), () {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Text('🧿'),
+                SizedBox(width: 2.w),
+                Expanded(
+                  child: Text(
+                    'Nazar boncuğu gönderildi! Kötü gözlerden korunuyor 🙏',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.blue[700],
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.selectedSelector == null) {
@@ -128,31 +221,78 @@ class _SuggestedCandidatesSectionState
       return _buildNoSuggestions();
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Stack(
       children: [
-        _buildSectionHeader(),
-        SizedBox(height: 2.h),
-        SizedBox(
-          height: 52.h,
-          child: CustomSwipeableCard(
-            cards: _localProposals
-                .map((proposal) => _buildCandidateCard(proposal))
-                .toList(),
-            onSwipe: (direction, index) {
-              if (index >= _localProposals.length) return;
-              final proposal = _localProposals[index];
-              if (direction == SwipeDirection.right) {
-                _handleAccept(proposal);
-              } else if (direction == SwipeDirection.left) {
-                _handleReject(proposal);
-              }
-            },
-            swipeThreshold: 0.3,
-            stackSize: 3,
-            cardPadding: EdgeInsets.all(8.0),
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader(),
+            SizedBox(height: 2.h),
+            SizedBox(
+              height: 68.h,
+              child: CustomSwipeableCard(
+                cards: _localProposals
+                    .map((proposal) => _buildCandidateCard(proposal))
+                    .toList(),
+                onSwipe: (direction, index) {
+                  if (index >= _localProposals.length) return;
+                  final proposal = _localProposals[index];
+                  if (direction == SwipeDirection.right) {
+                    _handleAccept(proposal);
+                  } else if (direction == SwipeDirection.left) {
+                    _handleReject(proposal);
+                  }
+                },
+                swipeThreshold: 0.3,
+                stackSize: 3,
+                cardPadding: EdgeInsets.all(8.0),
+              ),
+            ),
+          ],
         ),
+        // Kocaman nazar boncuğu overlay
+        if (_showNazarOverlay)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () {
+                // Overlay'e tıklandığında hiçbir şey yapma (geçişi engelle)
+              },
+              child: AnimatedBuilder(
+                animation: _nazarAnimationController,
+                builder: (context, child) {
+                  return Container(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    child: Center(
+                      child: Transform.scale(
+                        scale: _nazarScaleAnimation.value,
+                        child: Opacity(
+                          opacity: _nazarOpacityAnimation.value,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.blue.withValues(alpha: 0.5),
+                                  blurRadius: 30,
+                                  spreadRadius: 10,
+                                ),
+                              ],
+                            ),
+                            padding: EdgeInsets.all(8.w),
+                            child: Text(
+                              '🧿',
+                              style: TextStyle(fontSize: 40.w), // Kocaman emoji
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -186,7 +326,7 @@ class _SuggestedCandidatesSectionState
               ),
               Text(
                 '${widget.selectedSelector!.fullName} tarafından',
-                style: TextStyle(color: Colors.grey[600], fontSize: 11.sp),
+                style: TextStyle(color: Colors.grey[600], fontSize: 8.sp),
               ),
             ],
           ),
@@ -213,7 +353,7 @@ class _SuggestedCandidatesSectionState
     return Container(
       margin: EdgeInsets.only(bottom: 2.h),
       width: 85.w,
-      height: 65.h, // Sabit yükseklik
+      height: 75.h, // Daha yüksek dikdörtgen
       decoration: BoxDecoration(
         color: AppTheme.lightTheme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20.w),
@@ -277,19 +417,16 @@ class _SuggestedCandidatesSectionState
               ),
             ),
           ),
-          // Selector info badge
-          if (isDirectCandidate)
+          // Nazar boncuğu emojisi (sağ üst köşede)
+          if (_nazerBoncuguPressed.contains(proposal.id))
             Positioned(
-              top: 4.w,
-              right: 4.w,
+              top: 2.w,
+              right: 2.w,
               child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 3.w,
-                  vertical: 1.h,
-                ),
+                padding: EdgeInsets.all(2.w),
                 decoration: BoxDecoration(
-                  color: AppTheme.lightTheme.primaryColor.withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(6.w),
+                  color: Colors.white.withValues(alpha: 0.9),
+                  shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.2),
@@ -298,20 +435,50 @@ class _SuggestedCandidatesSectionState
                     ),
                   ],
                 ),
+                child: Text(
+                  '🧿',
+                  style: TextStyle(fontSize: 8.w),
+                ),
+              ),
+            ),
+          // Nazar mesajı (üst orta)
+          if (proposal.nazarFromUserName != null && proposal.nazarSentAt != null)
+            Positioned(
+              top: 4.w,
+              left: 4.w,
+              right: 4.w,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.blue[700]!.withValues(alpha: 0.9),
+                      Colors.blue[600]!.withValues(alpha: 0.9),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(8.w),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CustomIconWidget(
-                      iconName: 'person_search',
-                      color: Colors.white,
-                      size: 12.w,
-                    ),
-                    SizedBox(width: 1.w),
-                    Text(
-                      '${proposal.selectorName ?? 'Seçici'}',
-                      style: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                    Text('🧿', style: TextStyle(fontSize: 4.w)),
+                    SizedBox(width: 2.w),
+                    Expanded(
+                      child: Text(
+                        '${proposal.nazarFromUserName} size nazar değmesin dedi',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ],
@@ -343,22 +510,64 @@ class _SuggestedCandidatesSectionState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    otherCandidateName,
-                    style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      shadows: [
-                        Shadow(
-                          offset: const Offset(0, 1),
-                          blurRadius: 3,
-                          color: Colors.black.withValues(alpha: 0.5),
+                  // İsim ve genişletme butonu
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          otherCandidateName,
+                          style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                offset: const Offset(0, 1),
+                                blurRadius: 3,
+                                color: Colors.black.withValues(alpha: 0.5),
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            print('Dropdown butonu tıklandı - ID: ${proposal.id}');
+                            print('Mevcut durum: ${_expandedCards.contains(proposal.id)}');
+                            setState(() {
+                              if (_expandedCards.contains(proposal.id)) {
+                                _expandedCards.remove(proposal.id);
+                                print('Kart kapatıldı');
+                              } else {
+                                _expandedCards.add(proposal.id);
+                                print('Kart açıldı');
+                              }
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(4.w),
+                          child: Container(
+                            padding: EdgeInsets.all(2.w),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4.w),
+                            ),
+                            child: Icon(
+                              _expandedCards.contains(proposal.id)
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                              color: Colors.white,
+                              size: 7.w,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  
+                  // Kısa bio
                   if (otherCandidateBio != null && otherCandidateBio!.isNotEmpty) ...[
                     SizedBox(height: 0.5.h),
                     Text(
@@ -366,10 +575,36 @@ class _SuggestedCandidatesSectionState
                       style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                         color: Colors.white70,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      maxLines: _expandedCards.contains(proposal.id) ? null : 2,
+                      overflow: _expandedCards.contains(proposal.id) 
+                          ? TextOverflow.visible 
+                          : TextOverflow.ellipsis,
                     ),
                   ],
+                  
+                  // Genişletilmiş detaylar
+                  if (_expandedCards.contains(proposal.id)) ...[
+                    SizedBox(height: 1.h),
+                    _buildExpandedDetails(proposal, isDirectCandidate),
+                    SizedBox(height: 1.h),
+                    // Debug: Kapatma butonu
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _expandedCards.remove(proposal.id);
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.withValues(alpha: 0.7),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+                        ),
+                        child: Text('Kapat', style: TextStyle(fontSize: 10.sp)),
+                      ),
+                    ),
+                  ],
+                  
                   SizedBox(height: 2.h),
                   // Action buttons
                   _buildEnhancedActionButtons(proposal),
@@ -768,7 +1003,7 @@ class _SuggestedCandidatesSectionState
           child: FloatingActionButton(
             heroTag: "nazar_${proposal.id}",
             mini: true,
-            onPressed: () {}, // Boş fonksiyon - sadece dekoratif
+            onPressed: () => _handleNazarBoncugu(proposal),
             backgroundColor: Colors.blue[700],
             elevation: 0,
             child: Icon(
@@ -807,5 +1042,168 @@ class _SuggestedCandidatesSectionState
       ],
       mainAxisAlignment: MainAxisAlignment.center,
     );
+  }
+
+  Widget _buildExpandedDetails(MatchProposal proposal, bool isDirectCandidate) {
+    // Hangi adayın bilgilerini göstereceğimizi belirle
+    final candidateData = isDirectCandidate 
+        ? {
+            'name': proposal.targetCandidateName,
+            'bio': proposal.targetCandidateBio,
+            'imageUrl': proposal.targetCandidateImageUrl,
+          }
+        : {
+            'name': proposal.candidateName,
+            'bio': proposal.candidateBio,
+            'imageUrl': proposal.candidateImageUrl,
+          };
+
+    return Container(
+      padding: EdgeInsets.all(3.w),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(3.w),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '👤 Aday Hakkında',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12.sp,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 1.h),
+          
+          // Aday temel bilgileri
+          _buildDetailRow('👨‍💼 İsim:', candidateData['name'] ?? 'Bilinmeyen'),
+          
+          // Yaş bilgisi (şimdilik simüle edilmiş)
+          _buildDetailRow('🎂 Yaş:', '${20 + (proposal.id.hashCode % 15)} yaşında'),
+          
+          // Lokasyon bilgisi (şimdilik simüle edilmiş)
+          _buildDetailRow('📍 Konum:', _getSimulatedLocation(proposal.id)),
+          
+          // Meslek bilgisi (şimdilik simüle edilmiş)
+          _buildDetailRow('💼 Meslek:', _getSimulatedProfession(proposal.id)),
+          
+          // Önerilen tarafından
+          _buildDetailRow('💝 Önerilen:', proposal.selectorName ?? 'Bilinmeyen'),
+          
+          // Oluşturma tarihi
+          _buildDetailRow('📅 Tarih:', _formatDate(proposal.createdAt)),
+          
+          // Bio detaylı
+          if (candidateData['bio'] != null && candidateData['bio']!.isNotEmpty)
+            _buildDetailRow('📝 Hakkında:', candidateData['bio']!),
+          
+          // Hobiler (şimdilik simüle edilmiş)
+          _buildHobbiesRow(_getSimulatedHobbies(proposal.id)),
+          
+          // Durum bilgisi
+          _buildDetailRow('📊 Durum:', proposal.isPending ? '⏳ Bekliyor' : '✅ İşlendi'),
+          
+          // Eşleşme türü
+          _buildDetailRow('💕 Tür:', isDirectCandidate ? 'Size önerilen' : 'Karşılıklı eşleşme'),
+          
+          // Nazar durumu
+          if (proposal.nazarFromUserName != null)
+            _buildDetailRow('🧿 Nazar:', '${proposal.nazarFromUserName} tarafından korunuyor'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 0.2.h),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 10.sp,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(width: 2.w),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 10.sp,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHobbiesRow(List<String> hobbies) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 0.5.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '🎯 Hobiler:',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 10.sp,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 0.5.h),
+          Wrap(
+            spacing: 1.w,
+            runSpacing: 0.5.h,
+            children: hobbies.map((hobby) {
+              return Container(
+                padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.3.h),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.primaryColor.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(3.w),
+                ),
+                child: Text(
+                  hobby,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 8.sp,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getSimulatedLocation(String id) {
+    final locations = ['İstanbul', 'Ankara', 'İzmir', 'Antalya', 'Bursa', 'Adana', 'Gaziantep'];
+    return locations[id.hashCode % locations.length];
+  }
+
+  String _getSimulatedProfession(String id) {
+    final professions = ['Mühendis', 'Doktor', 'Öğretmen', 'Avukat', 'Mimar', 'Hemşire', 'Pazarlama Uzmanı', 'Grafik Tasarımcı'];
+    return professions[id.hashCode % professions.length];
+  }
+
+  List<String> _getSimulatedHobbies(String id) {
+    final allHobbies = ['Kitap okuma', 'Sinema', 'Spor', 'Müzik', 'Seyahat', 'Yemek yapma', 'Resim', 'Dans', 'Fotoğrafçılık', 'Bahçıvanlık'];
+    final hobbyCount = 2 + (id.hashCode % 4); // 2-5 hobi
+    final startIndex = id.hashCode % (allHobbies.length - hobbyCount);
+    return allHobbies.sublist(startIndex, startIndex + hobbyCount);
   }
 }

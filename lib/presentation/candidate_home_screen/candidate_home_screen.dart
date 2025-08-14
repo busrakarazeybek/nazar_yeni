@@ -292,19 +292,16 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
-        elevation: 0,
-        automaticallyImplyLeading: false, // Geri tuşunu kaldır
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: _buildBody(),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadData,
+          child: _buildBody(),
+        ),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
+
 
   Widget _buildBody() {
     if (_isLoading) {
@@ -319,7 +316,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     final currentUser = authProvider.currentUserProfile;
 
     return ListView(
-      padding: EdgeInsets.only(left: 4.w, right: 4.w, bottom: 4.w),
+      padding: EdgeInsets.all(4.w),
       children: [
         if (currentUser != null) _buildIncomingRequestsSection(currentUser.id),
         // Only show empty screen if not loading AND selectors are actually empty
@@ -425,7 +422,10 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _handleAddSelector,
+          onTap: () {
+            print('🔥 Görücü Ekle butonu CLICKED!');
+            _handleAddSelector();
+          },
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
@@ -495,8 +495,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 AnimatedContainer(
                   duration: Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
-                  width: isSelected ? 16.w : 15.w,
-                  height: isSelected ? 16.w : 15.w,
+                  width: isSelected ? 12.w : 10.w,
+                  height: isSelected ? 12.w : 10.w,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
@@ -523,8 +523,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                     child: selector.imageUrl != null && selector.imageUrl!.isNotEmpty
                         ? CustomImageWidget(
                             imageUrl: selector.imageUrl!,
-                            width: isSelected ? 16.w : 15.w,
-                            height: isSelected ? 16.w : 15.w,
+                            width: isSelected ? 12.w : 10.w,
+                            height: isSelected ? 12.w : 10.w,
                             fit: BoxFit.cover,
                             errorWidget: _buildDefaultSelectorAvatar(selector, isSelected),
                           )
@@ -592,8 +592,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildDefaultSelectorAvatar(UserProfile selector, bool isSelected) {
     return Container(
-      width: isSelected ? 16.w : 15.w,
-      height: isSelected ? 16.w : 15.w,
+      width: isSelected ? 12.w : 10.w,
+      height: isSelected ? 12.w : 10.w,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
@@ -606,7 +606,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       child: Icon(
         Icons.person,
         color: Colors.white,
-        size: isSelected ? 6.w : 5.w,
+        size: isSelected ? 4.w : 3.w,
       ),
     );
   }
@@ -1528,7 +1528,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     return BottomNavigationBar(
       currentIndex: 0, // Always highlight home
       onTap: (index) {
-        print('Bottom nav tapped: $index'); // Debug
+        print('🔥 Bottom nav CLICKED: $index'); // Debug
+        print('🔥 Navigation working!'); // Debug
         switch (index) {
           case 0:
             // Already on home screen

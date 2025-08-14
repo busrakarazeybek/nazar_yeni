@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../widgets/custom_swipeable_card_widget.dart';
 import './enhanced_swipeable_candidate_card_widget.dart';
 import './preferences_context_widget.dart';
 
@@ -96,9 +97,8 @@ class _EnhancedPotentialMatchesSectionState
                   ? 'Tercih Edilen Adaylar'
                   : 'Potansiyel Eşleşmeler',
               style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.bold,
                 color: AppTheme.lightTheme.colorScheme.onSurface,
-                fontSize: 15,
               ),
             ),
             if (widget.selectedCandidate != null)
@@ -211,131 +211,30 @@ class _EnhancedPotentialMatchesSectionState
     final topCandidate = currentTopCandidate ?? widget.potentialMatches.first;
 
     return SizedBox(
-      height: 70.h,
-      child: Stack(
-        children: [
-          ...List.generate(widget.potentialMatches.length.clamp(0, 3), (index) {
+      height: 55.h,
+      child: CustomSwipeableCard(
+        cards: widget.potentialMatches.map((candidate) => 
+          EnhancedSwipeableCandidateCard(
+            candidate: candidate,
+            selectedCandidate: widget.selectedCandidate,
+            onSwipeRight: null,
+            onSwipeLeft: null,
+            isTopCard: true,
+          )
+        ).toList(),
+        onSwipe: (direction, index) {
+          if (index < widget.potentialMatches.length) {
             final candidate = widget.potentialMatches[index];
-            final scale = 1.0 - (index * 0.05);
-            final offset = index * 8.0;
-
-            return Positioned(
-              top: offset,
-              left: index * 4.0,
-              right: index * 4.0,
-              bottom: offset * 2,
-              child: Transform.scale(
-                scale: scale,
-                child: EnhancedSwipeableCandidateCard(
-                  candidate: candidate,
-                  selectedCandidate: widget.selectedCandidate,
-                  onSwipeRight: index == 0
-                      ? (name) => widget.onCardSwiped?.call(name, true)
-                      : null,
-                  onSwipeLeft: index == 0
-                      ? (name) => widget.onCardSwiped?.call(name, false)
-                      : null,
-                  isTopCard: index == 0,
-                ),
-              ),
-            );
-          }),
-          Positioned(
-            bottom: 2.h,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // Pass button
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.red.withValues(alpha: 0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: FloatingActionButton(
-                    heroTag: "pass",
-                    onPressed: () {
-                      if (topCandidate != null && widget.onCardSwiped != null) {
-                        widget.onCardSwiped!(topCandidate.fullName, false);
-                      }
-                      _updateTopCandidate();
-                    },
-                    backgroundColor: Colors.red,
-                    elevation: 0,
-                    child: CustomIconWidget(
-                      iconName: 'close',
-                      color: Colors.white,
-                      size: 24.w,
-                    ),
-                  ),
-                ),
-                // Info button
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.lightTheme.primaryColor.withValues(
-                          alpha: 0.3,
-                        ),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: FloatingActionButton(
-                    heroTag: "info",
-                    mini: true,
-                    onPressed: () {},
-                    backgroundColor: AppTheme.lightTheme.primaryColor,
-                    elevation: 0,
-                    child: CustomIconWidget(
-                      iconName: 'info',
-                      color: Colors.white,
-                      size: 16.w,
-                    ),
-                  ),
-                ),
-                // Like button
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.green.withValues(alpha: 0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: FloatingActionButton(
-                    heroTag: "like",
-                    onPressed: () {
-                      if (topCandidate != null && widget.onCardSwiped != null) {
-                        widget.onCardSwiped!(topCandidate.fullName, true);
-                      }
-                      _updateTopCandidate();
-                    },
-                    backgroundColor: Colors.green,
-                    elevation: 0,
-                    child: CustomIconWidget(
-                      iconName: 'favorite',
-                      color: Colors.white,
-                      size: 24.w,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+            if (direction == SwipeDirection.right) {
+              widget.onCardSwiped?.call(candidate.fullName, true);
+            } else if (direction == SwipeDirection.left) {
+              widget.onCardSwiped?.call(candidate.fullName, false);
+            }
+          }
+        },
+        swipeThreshold: 0.2,
+        stackSize: 3,
+        cardPadding: EdgeInsets.all(4.w),
       ),
     );
   }

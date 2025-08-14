@@ -286,4 +286,29 @@ class MatchService {
       throw Exception('Eşleşme reddedilirken hata: $e');
     }
   }
+
+  /// Send nazar boncugu to a match
+  Future<void> sendNazarBoncugu({
+    required String matchId,
+    required String fromUserId,
+    required String fromUserName,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      await client
+          .from('matches')
+          .update({
+            'nazar_from_user_id': fromUserId,
+            'nazar_from_user_name': fromUserName,
+            'nazar_sent_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', matchId);
+          
+      print('Nazar boncuğu gönderildi: $matchId -> $fromUserName');
+    } catch (error) {
+      print('Nazar boncuğu gönderilirken hata: $error');
+      throw Exception('Nazar boncuğu gönderilemedi: $error');
+    }
+  }
 }

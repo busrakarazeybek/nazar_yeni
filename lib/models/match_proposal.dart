@@ -32,6 +32,11 @@ class MatchProposal {
   final String? targetCandidateName;
   final String? targetCandidateImageUrl;
   final String? targetCandidateBio;
+  
+  // Nazar boncuğu bilgileri
+  final String? nazarFromUserId;
+  final String? nazarFromUserName;
+  final DateTime? nazarSentAt;
 
   // Computed properties for backward compatibility
   String get candidate1Id => candidateId;
@@ -68,6 +73,9 @@ class MatchProposal {
     this.targetCandidateName,
     this.targetCandidateImageUrl,
     this.targetCandidateBio,
+    this.nazarFromUserId,
+    this.nazarFromUserName,
+    this.nazarSentAt,
   });
 
   factory MatchProposal.fromJson(Map<String, dynamic> json) {
@@ -97,6 +105,11 @@ class MatchProposal {
       targetCandidateImageUrl:
           json['target_candidate']?['image_url'] as String?,
       targetCandidateBio: json['target_candidate']?['bio'] as String?,
+      nazarFromUserId: json['nazar_from_user_id'] as String?,
+      nazarFromUserName: json['nazar_from_user_name'] as String?,
+      nazarSentAt: json['nazar_sent_at'] != null
+          ? DateTime.parse(json['nazar_sent_at'] as String)
+          : null,
     );
   }
 
@@ -112,6 +125,9 @@ class MatchProposal {
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
       'estimated_response_time': estimatedResponseTime?.toIso8601String(),
+      'nazar_from_user_id': nazarFromUserId,
+      'nazar_from_user_name': nazarFromUserName,
+      'nazar_sent_at': nazarSentAt?.toIso8601String(),
     };
   }
 

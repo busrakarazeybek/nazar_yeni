@@ -28,7 +28,7 @@ class _EnhancedCandidateSelectionCarouselState
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 15.h,
+      height: 8.h,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: BouncingScrollPhysics(),
@@ -51,8 +51,8 @@ class _EnhancedCandidateSelectionCarouselState
                   AnimatedContainer(
                     duration: Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
-                    width: isSelected ? 22.w : 20.w,
-                    height: isSelected ? 22.w : 20.w,
+                    width: isSelected ? 12.w : 10.w,
+                    height: isSelected ? 12.w : 10.w,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -87,13 +87,13 @@ class _EnhancedCandidateSelectionCarouselState
                           : _buildDefaultAvatar(candidate, isSelected),
                     ),
                   ),
-                  SizedBox(height: 1.h),
+                  SizedBox(height: 0.5.h),
                   AnimatedDefaultTextStyle(
                     duration: Duration(milliseconds: 300),
                     style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.w500,
-                      fontSize: isSelected ? 12.sp : 11.sp,
+                      fontSize: isSelected ? 9.sp : 8.sp,
                       color: isSelected
                           ? AppTheme.lightTheme.primaryColor
                           : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
@@ -135,7 +135,7 @@ class _EnhancedCandidateSelectionCarouselState
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: isSelected ? 18.sp : 16.sp,
+            fontSize: isSelected ? 10.sp : 8.sp,
           ),
         ),
       ),

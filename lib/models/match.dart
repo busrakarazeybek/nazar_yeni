@@ -16,6 +16,11 @@ class Match {
   final String? candidateImageUrl;
   final String? targetCandidateName;
   final String? targetCandidateImageUrl;
+  
+  // Nazar boncuğu bilgileri
+  final String? nazarFromUserId;
+  final String? nazarFromUserName;
+  final DateTime? nazarSentAt;
 
   Match({
     required this.id,
@@ -31,6 +36,9 @@ class Match {
     this.candidateImageUrl,
     this.targetCandidateName,
     this.targetCandidateImageUrl,
+    this.nazarFromUserId,
+    this.nazarFromUserName,
+    this.nazarSentAt,
   });
 
   factory Match.fromJson(Map<String, dynamic> json) {
@@ -51,6 +59,11 @@ class Match {
       targetCandidateName: json['target_candidate']?['full_name'] as String?,
       targetCandidateImageUrl:
           json['target_candidate']?['image_url'] as String?,
+      nazarFromUserId: json['nazar_from_user_id'] as String?,
+      nazarFromUserName: json['nazar_from_user_name'] as String?,
+      nazarSentAt: json['nazar_sent_at'] != null
+          ? DateTime.parse(json['nazar_sent_at'] as String)
+          : null,
     );
   }
 
@@ -63,6 +76,9 @@ class Match {
       'status': status.toString().split('.').last,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      'nazar_from_user_id': nazarFromUserId,
+      'nazar_from_user_name': nazarFromUserName,
+      'nazar_sent_at': nazarSentAt?.toIso8601String(),
     };
   }
 

@@ -266,416 +266,552 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: AppTheme.lightTheme.appBarTheme.backgroundColor,
-        elevation: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: CustomIconWidget(
-            iconName: 'arrow_back',
-            color: AppTheme.lightTheme.colorScheme.onSurface,
-            size: 24,
-          ),
-        ),
-        title: Text(
-          'Kayıt Ol',
-          style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
+  BoxDecoration _buildTurkishOrnateBackground() {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFF1a365d), // Dark blue
+          Color(0xFF2c5282), // Medium blue
+          Color(0xFF3182ce), // Main blue
+          Color(0xFF4299e1), // Light blue
+        ],
+        stops: [0.0, 0.3, 0.7, 1.0],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Role indicator
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-              decoration: BoxDecoration(
-                color: AppTheme.lightTheme.colorScheme.primaryContainer,
-                border: Border(
-                  bottom: BorderSide(
-                    color: AppTheme.lightTheme.colorScheme.outline.withValues(
-                      alpha: 0.2,
-                    ),
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CustomIconWidget(
-                    iconName: _selectedRole == 'Selector' ? 'people' : 'person',
-                    color: AppTheme.lightTheme.colorScheme.primary,
-                    size: 20,
-                  ),
-                  SizedBox(width: 2.w),
-                  Text(
-                    _selectedRole == 'Selector'
-                        ? 'Seçici Olarak Kayıt'
-                        : 'Aday Olarak Kayıt',
-                    style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                      color: AppTheme.lightTheme.colorScheme.primary,
-                      fontWeight: FontWeight.w500,
-                    ),
+      image: DecorationImage(
+        image: NetworkImage('https://images.unsplash.com/photo-1578662996442-48f60103fc96?q=80&w=1920&h=1080&fit=crop&ixlib=rb-4.0.3'), // Turkish ornate pattern
+        fit: BoxFit.cover,
+        opacity: 0.15,
+        colorFilter: ColorFilter.mode(
+          Color(0xFF1a365d).withOpacity(0.8),
+          BlendMode.overlay,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomAppBar() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: CustomIconWidget(
+              iconName: 'arrow_back',
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              'Kayıt Ol',
+              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                shadows: [
+                  Shadow(
+                    color: Colors.black.withOpacity(0.3),
+                    offset: Offset(0, 1),
+                    blurRadius: 2,
                   ),
                 ],
               ),
+              textAlign: TextAlign.center,
             ),
+          ),
+          SizedBox(width: 48), // Balance the back button
+        ],
+      ),
+    );
+  }
 
-            // Scrollable form
-            Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollController,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: _buildTurkishOrnateBackground(),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Custom App Bar
+              _buildCustomAppBar(),
+              
+              // Role indicator
+              Container(
+                width: double.infinity,
                 padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Profile photo section
-                      ProfilePhotoSectionWidget(
-                        imagePath: _profileImagePath,
-                        onImageSelected: _onProfileImageSelected,
-                      ),
-
-                      SizedBox(height: 3.h),
-
-                      // Form fields
-                      FormFieldsWidget(
-                        nameController: _nameController,
-                        emailController: _emailController,
-                        passwordController: _passwordController,
-                        confirmPasswordController: _confirmPasswordController,
-                        bioController: _bioController,
-                        selectedAge: _selectedAge,
-                        selectedGender: _selectedGender,
-                        obscurePassword: _obscurePassword,
-                        obscureConfirmPassword: _obscureConfirmPassword,
-                        onAgeChanged: _onAgeChanged,
-                        onGenderChanged: _onGenderChanged,
-                        onPasswordVisibilityToggled: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                        onConfirmPasswordVisibilityToggled: () {
-                          setState(() {
-                            _obscureConfirmPassword = !_obscureConfirmPassword;
-                          });
-                        },
-                      ),
-
-                      SizedBox(height: 3.h),
-
-                      // Interests section
-                      InterestsSectionWidget(
-                        availableInterests: _availableInterests,
-                        selectedInterests: _selectedInterests,
-                        onInterestsChanged: (interests) {
-                          _onInterestsChanged(interests);
-                          _validateForm();
-                        },
-                      ),
-
-                      if (_selectedRole.toLowerCase() == 'candidate') ...[
-                        SizedBox(height: 2.h),
-                        Text(
-                          'Tercih Edilen Yaş Aralığı',
-                          style: AppTheme.lightTheme.textTheme.labelLarge,
-                        ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                decoration: InputDecoration(
-                                  labelText: 'Min Yaş',
-                                ),
-                                keyboardType: TextInputType.number,
-                                onChanged: (val) {
-                                  setState(() {
-                                    _preferredAgeMin = int.tryParse(val);
-                                  });
-                                  _validateForm();
-                                },
-                                validator: (val) {
-                                  if (_selectedRole.toLowerCase() !=
-                                      'candidate') {
-                                    return null;
-                                  }
-                                  if (val == null || val.isEmpty) {
-                                    return 'Gerekli';
-                                  }
-                                  final v = int.tryParse(val);
-                                  if (v == null) return 'Geçersiz';
-                                  if (_preferredAgeMax != null &&
-                                      v > _preferredAgeMax!) {
-                                    return 'Min, max yaştan büyük olamaz';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                            SizedBox(width: 2.w),
-                            Expanded(
-                              child: TextFormField(
-                                decoration: InputDecoration(
-                                  labelText: 'Max Yaş',
-                                ),
-                                keyboardType: TextInputType.number,
-                                onChanged: (val) {
-                                  setState(() {
-                                    _preferredAgeMax = int.tryParse(val);
-                                  });
-                                  _validateForm();
-                                },
-                                validator: (val) {
-                                  if (_selectedRole.toLowerCase() !=
-                                      'candidate') {
-                                    return null;
-                                  }
-                                  if (val == null || val.isEmpty) {
-                                    return 'Gerekli';
-                                  }
-                                  final v = int.tryParse(val);
-                                  if (v == null) return 'Geçersiz';
-                                  if (_preferredAgeMin != null &&
-                                      v < _preferredAgeMin!) {
-                                    return 'Max, min yaştan küçük olamaz';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          'Tercih Edilen Cinsiyetler',
-                          style: AppTheme.lightTheme.textTheme.labelLarge,
-                        ),
-                        Wrap(
-                          spacing: 8,
-                          children: [
-                            for (final gender in ['Kadın', 'Erkek', 'Diğer'])
-                              FilterChip(
-                                label: Text(gender),
-                                selected: _preferredGenders.contains(gender),
-                                onSelected: (selected) {
-                                  setState(() {
-                                    if (selected) {
-                                      _preferredGenders.add(gender);
-                                    } else {
-                                      _preferredGenders.remove(gender);
-                                    }
-                                  });
-                                  _validateForm();
-                                },
-                              ),
-                          ],
-                        ),
-                        if (_preferredGenders.isEmpty)
-                          Padding(
-                            padding: EdgeInsets.only(top: 1.h),
-                            child: Text(
-                              'En az bir cinsiyet seçmelisiniz',
-                              style: TextStyle(
-                                color: AppTheme.errorColor,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          'Tercih Edilen Şehirler',
-                          style: AppTheme.lightTheme.textTheme.labelLarge,
-                        ),
-                        Wrap(
-                          spacing: 8,
-                          children: [
-                            for (final city in [
-                              'İstanbul',
-                              'Ankara',
-                              'İzmir',
-                              'Bursa',
-                              'Antalya',
-                            ])
-                              FilterChip(
-                                label: Text(city),
-                                selected: _preferredCities.contains(city),
-                                onSelected: (selected) {
-                                  setState(() {
-                                    if (selected) {
-                                      _preferredCities.add(city);
-                                    } else {
-                                      _preferredCities.remove(city);
-                                    }
-                                  });
-                                  _validateForm();
-                                },
-                              ),
-                          ],
-                        ),
-                        if (_preferredCities.isEmpty)
-                          Padding(
-                            padding: EdgeInsets.only(top: 1.h),
-                            child: Text(
-                              'En az bir şehir seçmelisiniz',
-                              style: TextStyle(
-                                color: AppTheme.errorColor,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                      ],
-
-                      SizedBox(height: 3.h),
-
-                      // Terms and conditions
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Checkbox(
-                            value: _termsAccepted,
-                            onChanged: (value) {
-                              setState(() {
-                                _termsAccepted = value ?? false;
-                              });
-                              _validateForm();
-                            },
-                            activeColor:
-                                AppTheme.lightTheme.colorScheme.primary,
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _termsAccepted = !_termsAccepted;
-                                });
-                                _validateForm();
-                              },
-                              child: Padding(
-                                padding: EdgeInsets.only(top: 1.h),
-                                child: RichText(
-                                  text: TextSpan(
-                                    style:
-                                        AppTheme.lightTheme.textTheme.bodySmall,
-                                    children: [
-                                      const TextSpan(text: 'Kayıt olarak '),
-                                      TextSpan(
-                                        text: 'Kullanım Şartları',
-                                        style: TextStyle(
-                                          color: AppTheme
-                                              .lightTheme.colorScheme.primary,
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                      const TextSpan(text: ' ve '),
-                                      TextSpan(
-                                        text: 'Gizlilik Politikası',
-                                        style: TextStyle(
-                                          color: AppTheme
-                                              .lightTheme.colorScheme.primary,
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                      const TextSpan(
-                                        text: '\'nı kabul etmiş olursunuz.',
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CustomIconWidget(
+                      iconName: _selectedRole == 'Selector' ? 'people' : 'person',
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    SizedBox(width: 2.w),
+                    Text(
+                      _selectedRole == 'Selector'
+                          ? 'Seçici Olarak Kayıt'
+                          : 'Aday Olarak Kayıt',
+                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.3),
+                            offset: Offset(0, 1),
+                            blurRadius: 2,
                           ),
                         ],
                       ),
+                    ),
+                  ],
+                ),
+              ),
 
-                      SizedBox(height: 4.h),
-
-                      // Register button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 6.h,
-                        child: ElevatedButton(
-                          onPressed: _isFormValid && !_isLoading
-                              ? _handleRegistration
-                              : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isFormValid
-                                ? AppTheme.lightTheme.colorScheme.primary
-                                : AppTheme.lightTheme.colorScheme.outline,
-                            foregroundColor: Colors.white,
-                            elevation: _isFormValid ? 2 : 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: _isLoading
-                              ? SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : Text(
-                                  'Hesap Oluştur',
-                                  style: AppTheme
-                                      .lightTheme.textTheme.titleMedium
-                                      ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+              // Scrollable form
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Profile photo section
+                        ProfilePhotoSectionWidget(
+                          imagePath: _profileImagePath,
+                          onImageSelected: _onProfileImageSelected,
                         ),
-                      ),
 
-                      SizedBox(height: 2.h),
+                        SizedBox(height: 3.h),
 
-                      // Login link
-                      Center(
-                        child: TextButton(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/login-screen');
+                        // Form fields
+                        FormFieldsWidget(
+                          nameController: _nameController,
+                          emailController: _emailController,
+                          passwordController: _passwordController,
+                          confirmPasswordController: _confirmPasswordController,
+                          bioController: _bioController,
+                          selectedAge: _selectedAge,
+                          selectedGender: _selectedGender,
+                          obscurePassword: _obscurePassword,
+                          obscureConfirmPassword: _obscureConfirmPassword,
+                          onAgeChanged: _onAgeChanged,
+                          onGenderChanged: _onGenderChanged,
+                          onPasswordVisibilityToggled: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
                           },
-                          child: RichText(
-                            text: TextSpan(
-                              style: AppTheme.lightTheme.textTheme.bodyMedium,
-                              children: [
-                                const TextSpan(
-                                  text: 'Zaten hesabınız var mı? ',
-                                ),
-                                TextSpan(
-                                  text: 'Giriş Yapın',
-                                  style: TextStyle(
-                                    color:
-                                        AppTheme.lightTheme.colorScheme.primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                          onConfirmPasswordVisibilityToggled: () {
+                            setState(() {
+                              _obscureConfirmPassword = !_obscureConfirmPassword;
+                            });
+                          },
+                        ),
+
+                        SizedBox(height: 3.h),
+
+                        // Interests section
+                        InterestsSectionWidget(
+                          availableInterests: _availableInterests,
+                          selectedInterests: _selectedInterests,
+                          onInterestsChanged: (interests) {
+                            _onInterestsChanged(interests);
+                            _validateForm();
+                          },
+                        ),
+
+                        if (_selectedRole.toLowerCase() == 'candidate') ...[
+                          SizedBox(height: 2.h),
+                          Text(
+                            'Tercih Edilen Yaş Aralığı',
+                            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  offset: Offset(0, 1),
+                                  blurRadius: 2,
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  decoration: InputDecoration(
+                                    labelText: 'Min Yaş',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _preferredAgeMin = int.tryParse(val);
+                                    });
+                                    _validateForm();
+                                  },
+                                  validator: (val) {
+                                    if (_selectedRole.toLowerCase() !=
+                                        'candidate') {
+                                      return null;
+                                    }
+                                    if (val == null || val.isEmpty) {
+                                      return 'Gerekli';
+                                    }
+                                    final v = int.tryParse(val);
+                                    if (v == null) return 'Geçersiz';
+                                    if (_preferredAgeMax != null &&
+                                        v > _preferredAgeMax!) {
+                                      return 'Min, max yaştan büyük olamaz';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              SizedBox(width: 2.w),
+                              Expanded(
+                                child: TextFormField(
+                                  decoration: InputDecoration(
+                                    labelText: 'Max Yaş',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _preferredAgeMax = int.tryParse(val);
+                                    });
+                                    _validateForm();
+                                  },
+                                  validator: (val) {
+                                    if (_selectedRole.toLowerCase() !=
+                                        'candidate') {
+                                      return null;
+                                    }
+                                    if (val == null || val.isEmpty) {
+                                      return 'Gerekli';
+                                    }
+                                    final v = int.tryParse(val);
+                                    if (v == null) return 'Geçersiz';
+                                    if (_preferredAgeMin != null &&
+                                        v < _preferredAgeMin!) {
+                                      return 'Max, min yaştan küçük olamaz';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 2.h),
+                          Text(
+                            'Tercih Edilen Cinsiyetler',
+                            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  offset: Offset(0, 1),
+                                  blurRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              for (final gender in ['Kadın', 'Erkek', 'Diğer'])
+                                FilterChip(
+                                  label: Text(gender),
+                                  selected: _preferredGenders.contains(gender),
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _preferredGenders.add(gender);
+                                      } else {
+                                        _preferredGenders.remove(gender);
+                                      }
+                                    });
+                                    _validateForm();
+                                  },
+                                ),
+                            ],
+                          ),
+                          if (_preferredGenders.isEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(top: 1.h),
+                              child: Text(
+                                'En az bir cinsiyet seçmelisiniz',
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 12,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black.withOpacity(0.5),
+                                      offset: Offset(0, 1),
+                                      blurRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          SizedBox(height: 2.h),
+                          Text(
+                            'Tercih Edilen Şehirler',
+                            style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  offset: Offset(0, 1),
+                                  blurRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              for (final city in [
+                                'İstanbul',
+                                'Ankara',
+                                'İzmir',
+                                'Bursa',
+                                'Antalya',
+                              ])
+                                FilterChip(
+                                  label: Text(city),
+                                  selected: _preferredCities.contains(city),
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _preferredCities.add(city);
+                                      } else {
+                                        _preferredCities.remove(city);
+                                      }
+                                    });
+                                    _validateForm();
+                                  },
+                                ),
+                            ],
+                          ),
+                          if (_preferredCities.isEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(top: 1.h),
+                              child: Text(
+                                'En az bir şehir seçmelisiniz',
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 12,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black.withOpacity(0.5),
+                                      offset: Offset(0, 1),
+                                      blurRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
 
-                      SizedBox(height: 2.h),
-                    ],
+                        SizedBox(height: 3.h),
+
+                        // Terms and conditions
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Checkbox(
+                              value: _termsAccepted,
+                              onChanged: (value) {
+                                setState(() {
+                                  _termsAccepted = value ?? false;
+                                });
+                                _validateForm();
+                              },
+                              activeColor: Colors.white,
+                              checkColor: Color(0xFF1a365d),
+                              side: BorderSide(color: Colors.white.withOpacity(0.7), width: 2),
+                            ),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _termsAccepted = !_termsAccepted;
+                                  });
+                                  _validateForm();
+                                },
+                                child: Padding(
+                                  padding: EdgeInsets.only(top: 1.h),
+                                  child: RichText(
+                                    text: TextSpan(
+                                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                        color: Colors.white.withOpacity(0.9),
+                                      ),
+                                      children: [
+                                        const TextSpan(text: 'Kayıt olarak '),
+                                        TextSpan(
+                                          text: 'Kullanım Şartları',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            decoration: TextDecoration.underline,
+                                            decorationColor: Colors.white,
+                                          ),
+                                        ),
+                                        const TextSpan(text: ' ve '),
+                                        TextSpan(
+                                          text: 'Gizlilik Politikası',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            decoration: TextDecoration.underline,
+                                            decorationColor: Colors.white,
+                                          ),
+                                        ),
+                                        const TextSpan(
+                                          text: '\'nı kabul etmiş olursunuz.',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: 4.h),
+
+                        // Register button
+                        Container(
+                          width: double.infinity,
+                          height: 6.h,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: _isFormValid ? [
+                                Colors.white.withOpacity(0.9),
+                                Colors.white.withOpacity(0.7),
+                              ] : [
+                                Colors.white.withOpacity(0.3),
+                                Colors.white.withOpacity(0.2),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 1,
+                            ),
+                            boxShadow: _isFormValid ? [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 15,
+                                offset: Offset(0, 8),
+                              ),
+                              BoxShadow(
+                                color: Colors.white.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: Offset(0, -2),
+                              ),
+                            ] : [],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: _isFormValid && !_isLoading
+                                ? _handleRegistration
+                                : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: _isFormValid ? Color(0xFF1a365d) : Colors.white.withOpacity(0.5),
+                              shadowColor: Colors.transparent,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Color(0xFF1a365d),
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    'Hesap Oluştur',
+                                    style: AppTheme
+                                        .lightTheme.textTheme.titleMedium
+                                        ?.copyWith(
+                                      color: _isFormValid ? Color(0xFF1a365d) : Colors.white.withOpacity(0.5),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ),
+
+                        SizedBox(height: 2.h),
+
+                        // Login link
+                        Center(
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/login-screen');
+                            },
+                            child: RichText(
+                              text: TextSpan(
+                                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                                children: [
+                                  const TextSpan(
+                                    text: 'Zaten hesabınız var mı? ',
+                                  ),
+                                  TextSpan(
+                                    text: 'Giriş Yapın',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: TextDecoration.underline,
+                                      decorationColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        SizedBox(height: 2.h),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../widgets/app_logo_widget.dart';
 import './widgets/cultural_info_bottom_sheet.dart';
 import './widgets/role_card_widget.dart';
 
@@ -103,10 +104,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                                             .lightTheme.colorScheme.primary,
                                         borderRadius:
                                             BorderRadius.circular(4.w)),
-                                    child: CustomIconWidget(
-                                        iconName: 'favorite',
-                                        color: Colors.white,
-                                        size: 48.w)),
+                                    child: AppLogoWidget(
+                                        size: 60.w)),
 
                                 SizedBox(height: 3.h),
 

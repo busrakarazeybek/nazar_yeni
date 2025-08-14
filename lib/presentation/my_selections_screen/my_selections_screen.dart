@@ -410,17 +410,17 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   ],
                 ),
                 SizedBox(height: 2.h),
+                // Text(
+                //   "IT'S A",
+                //   style: TextStyle(
+                //     color: Colors.white,
+                //     fontSize: 16.sp,
+                //     fontWeight: FontWeight.w600,
+                //     letterSpacing: 2,
+                //   ),
+                // ),
                 Text(
-                  "IT'S A",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 2,
-                  ),
-                ),
-                Text(
-                  "MATCH!",
+                  "EŞLEŞTİNİZ!",
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24.sp,

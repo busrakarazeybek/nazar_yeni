@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../widgets/app_logo_widget.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -268,10 +269,8 @@ class _SplashScreenState extends State<SplashScreen>
                     ],
                   ),
                   child: Center(
-                    child: CustomIconWidget(
-                      iconName: 'favorite',
-                      color: AppTheme.primaryLight,
-                      size: 12.w,
+                    child: AppLogoWidget(
+                      size: 25.w,
                     ),
                   ),
                 ),
