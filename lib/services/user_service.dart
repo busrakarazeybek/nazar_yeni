@@ -178,6 +178,59 @@ class UserService {
     }
   }
 
+  /// Search users by phone number
+  Future<List<UserProfile>> searchUsersByPhone({
+    required String phone,
+    UserRole? role,
+    int? limit,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      // Clean phone number (remove spaces and special characters)
+      String cleanPhone = phone.replaceAll(RegExp(r'[^\d]'), '');
+      
+      var queryBuilder = client
+          .from('user_profiles')
+          .select()
+          .eq('phone', phone) // First try exact match
+          .eq('is_active', true);
+
+      if (role != null) {
+        queryBuilder = queryBuilder.eq('role', role.toString().split('.').last);
+      }
+
+      final response = limit != null
+          ? await queryBuilder.limit(limit)
+          : await queryBuilder;
+
+      List<UserProfile> results = response.map((json) => UserProfile.fromJson(json)).toList();
+      
+      // If no exact match found, try pattern matching for cleaned phone
+      if (results.isEmpty && cleanPhone.length >= 10) {
+        queryBuilder = client
+            .from('user_profiles')
+            .select()
+            .ilike('phone', '%$cleanPhone%')
+            .eq('is_active', true);
+
+        if (role != null) {
+          queryBuilder = queryBuilder.eq('role', role.toString().split('.').last);
+        }
+
+        final patternResponse = limit != null
+            ? await queryBuilder.limit(limit)
+            : await queryBuilder;
+
+        results = patternResponse.map((json) => UserProfile.fromJson(json)).toList();
+      }
+
+      return results;
+    } catch (error) {
+      throw Exception('Failed to search users by phone: $error');
+    }
+  }
+
   /// Get users by location
   Future<List<UserProfile>> getUsersByLocation(String location) async {
     try {
@@ -346,6 +399,46 @@ class UserService {
     } catch (error) {
       // If table doesn't exist yet, return empty list
       return [];
+    }
+  }
+
+  /// Check if selector is already added to candidate
+  Future<bool> isSelectorAlreadyAdded({
+    required String candidateId,
+    required String selectorId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client
+          .from('selector_candidates')
+          .select('id')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId);
+
+      return response.isNotEmpty;
+    } catch (error) {
+      print('Error checking if selector already added: $error');
+      return false;
+    }
+  }
+
+  /// Check if candidate is already added to selector
+  Future<bool> isCandidateAlreadyAdded({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client
+          .from('selector_candidates')
+          .select('id')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId);
+
+      return response.isNotEmpty;
+    } catch (error) {
+      print('Error checking if candidate already added: $error');
+      return false;
     }
   }
 

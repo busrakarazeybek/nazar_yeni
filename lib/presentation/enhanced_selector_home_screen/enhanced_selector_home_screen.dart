@@ -45,6 +45,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   final Map<String, Set<String>> _shownCardIdsPerCandidate = {};
   UserProfile? lastSwipedCandidate;
   bool _hasCheckedArguments = false;
+  bool _isRequestsExpanded = false; // Gelen istekler açık/kapalı durumu
 
   @override
   void initState() {
@@ -155,27 +156,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
             .where((candidate) => !_removedCandidateIds.contains(candidate.id))
             .toList();
 
-        if (_assignedCandidates.isEmpty) {
-          _assignedCandidates = [
-            UserProfile(
-              id: 'b3e1c2d4-5f6a-7b8c-9d0e-1f2a3b4c5d6e',
-              email: 'aday1@example.com',
-              fullName: 'Aday Bir',
-              role: UserRole.candidate,
-              age: 25,
-              gender: GenderType.female,
-              bio: 'Kitap okumayı ve yürüyüş yapmayı severim.',
-              interests: ['Kitap', 'Spor', 'Yürüyüş'],
-              location: 'İstanbul',
-              profession: 'Mühendis',
-              imageUrl: null,
-              phone: null,
-              isActive: true,
-              isVerified: false,
-              createdAt: DateTime.now(),
-            ),
-          ];
-        }
+        // Default aday profili kaldırıldı - sadece gerçek adaylar gösterilecek
         if (_potentialMatches.isEmpty) {
           _potentialMatches = [
             UserProfile(
@@ -526,34 +507,83 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
 
   // 2. Kabul/ret fonksiyonları
   Future<void> _handleAcceptRequest(Map<String, dynamic> req) async {
-    final client = await SupabaseService().client;
-    await client
-        .from('selector_candidate_requests')
-        .update({'status': 'accepted'}).eq('id', req['id']);
+    try {
+      final client = await SupabaseService().client;
+      await client
+          .from('selector_candidate_requests')
+          .update({'status': 'accepted'}).eq('id', req['id']);
 
-    // Gerçek ilişkiyi oluştur
-    if (req['type'] == 'selector') {
-      // Aday, seçiciyi kendi listesine ekler (selector_id: to_user_id, candidate_id: from_user_id)
-      await UserService().addCandidateToSelector(
-        selectorId: req['to_user_id'],
-        candidateId: req['from_user_id'],
+      // Gerçek ilişkiyi oluştur (duplicate kontrolü ile)
+      if (req['type'] == 'selector') {
+        // Aday, seçiciyi kendi listesine ekler (selector_id: to_user_id, candidate_id: from_user_id)
+        try {
+          await UserService().addCandidateToSelector(
+            selectorId: req['to_user_id'],
+            candidateId: req['from_user_id'],
+          );
+        } catch (e) {
+          // Eğer zaten ilişki varsa, sadece devam et
+          if (!e.toString().contains('duplicate key')) {
+            rethrow; // Başka bir hata ise yeniden fırlat
+          }
+        }
+      } else if (req['type'] == 'candidate') {
+        // Seçici, adayı kendi listesine ekler (selector_id: from_user_id, candidate_id: to_user_id)
+        try {
+          await UserService().addCandidateToSelector(
+            selectorId: req['from_user_id'],
+            candidateId: req['to_user_id'],
+          );
+        } catch (e) {
+          // Eğer zaten ilişki varsa, sadece devam et
+          if (!e.toString().contains('duplicate key')) {
+            rethrow; // Başka bir hata ise yeniden fırlat
+          }
+        }
+      }
+      
+      // Başarılı mesajı göster
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İstek kabul edildi!'),
+          backgroundColor: Colors.green,
+        ),
       );
-    } else if (req['type'] == 'candidate') {
-      // Seçici, adayı kendi listesine ekler (selector_id: from_user_id, candidate_id: to_user_id)
-      await UserService().addCandidateToSelector(
-        selectorId: req['from_user_id'],
-        candidateId: req['to_user_id'],
+      
+      setState(() {});
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Hata oluştu: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
-    setState(() {});
   }
 
   Future<void> _handleRejectRequest(Map<String, dynamic> req) async {
-    final client = await SupabaseService().client;
-    await client
-        .from('selector_candidate_requests')
-        .update({'status': 'rejected'}).eq('id', req['id']);
-    setState(() {});
+    try {
+      final client = await SupabaseService().client;
+      await client
+          .from('selector_candidate_requests')
+          .update({'status': 'rejected'}).eq('id', req['id']);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İstek reddedildi!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      
+      setState(() {});
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Hata oluştu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   // 3. Gelen istekler widget'ı
@@ -564,41 +594,284 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         if (!snapshot.hasData) return SizedBox();
         final requests = snapshot.data!;
         if (requests.isEmpty) return SizedBox();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 1.h),
-              child: Text(
-                'Gelen İstekler',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+        
+        return FutureBuilder<List<UserProfile>>(
+          future: Future.wait(
+            requests.map(
+              (req) => _userService.getUserProfile(req['from_user_id']),
             ),
-            ...requests.map(
-              (req) => Card(
-                child: ListTile(
-                  title: Text(
-                    req['type'] == 'selector'
-                        ? '${req['from_user_id']} sizi seçici olarak eklemek istiyor'
-                        : '${req['from_user_id']} sizi aday olarak eklemek istiyor',
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.check, color: Colors.green),
-                        onPressed: () => _handleAcceptRequest(req),
+          ).then((list) => list.whereType<UserProfile>().toList()),
+          builder: (context, userSnapshot) {
+            if (!userSnapshot.hasData) return SizedBox();
+            final userProfiles = userSnapshot.data!;
+            
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isRequestsExpanded = !_isRequestsExpanded;
+                    });
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 4.w,
+                      vertical: 2.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
                       ),
-                      IconButton(
-                        icon: Icon(Icons.close, color: Colors.red),
-                        onPressed: () => _handleRejectRequest(req),
-                      ),
-                    ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(2.w),
+                          decoration: BoxDecoration(
+                            color: AppTheme.lightTheme.primaryColor,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.notifications_active,
+                            color: Colors.white,
+                            size: 5.w,
+                          ),
+                        ),
+                        SizedBox(width: 3.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Gelen İstekler',
+                                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.lightTheme.primaryColor,
+                                ),
+                              ),
+                              Text(
+                                '${requests.length} yeni istek - ${_isRequestsExpanded ? "Gizle" : "Göster"}',
+                                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 2.w,
+                                vertical: 0.5.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.lightTheme.primaryColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${requests.length}',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 2.w),
+                            Icon(
+                              _isRequestsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                              color: AppTheme.lightTheme.primaryColor,
+                              size: 6.w,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
+                if (_isRequestsExpanded) ...[
+                  SizedBox(height: 2.h),
+                  ...List.generate(requests.length, (i) {
+                  final req = requests[i];
+                  final fromUser = userProfiles[i];
+                  final fromUserName = fromUser.fullName;
+                  final relation = req['relation'] ?? '';
+                  
+                  return Card(
+                    elevation: 2,
+                    margin: EdgeInsets.symmetric(vertical: 1.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Container(
+                      padding: EdgeInsets.all(3.w),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.lightTheme.primaryColor.withOpacity(0.05),
+                            AppTheme.lightTheme.primaryColor.withOpacity(0.02),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 6.w,
+                                backgroundImage: fromUser.imageUrl != null
+                                    ? NetworkImage(fromUser.imageUrl!)
+                                    : null,
+                                child: fromUser.imageUrl == null
+                                    ? Icon(Icons.person, size: 4.w)
+                                    : null,
+                              ),
+                              SizedBox(width: 3.w),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      fromUserName,
+                                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (relation.isNotEmpty)
+                                      Text(
+                                        '$relation olarak',
+                                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                          color: AppTheme.lightTheme.primaryColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 2.w,
+                                  vertical: 0.5.h,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.orange[200]!,
+                                  ),
+                                ),
+                                child: Text(
+                                  'YENİ',
+                                  style: TextStyle(
+                                    color: Colors.orange[700],
+                                    fontSize: 10.sp,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 2.h),
+                          Container(
+                            padding: EdgeInsets.all(3.w),
+                            decoration: BoxDecoration(
+                              color: AppTheme.lightTheme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.lightTheme.colorScheme.outline.withOpacity(0.2),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: AppTheme.lightTheme.primaryColor,
+                                  size: 5.w,
+                                ),
+                                SizedBox(width: 2.w),
+                                Expanded(
+                                  child: Text(
+                                    req['type'] == 'selector'
+                                        ? 'Sizi seçici olarak eklemek istiyor'
+                                        : 'Sizi aday olarak eklemek istiyor',
+                                    style: AppTheme.lightTheme.textTheme.bodyMedium,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 2.h),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _handleRejectRequest(req),
+                                  icon: Icon(
+                                    Icons.close,
+                                    color: Colors.red,
+                                    size: 4.w,
+                                  ),
+                                  label: Text(
+                                    'Reddet',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(color: Colors.red),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 3.w),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _handleAcceptRequest(req),
+                                  icon: Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 4.w,
+                                  ),
+                                  label: Text(
+                                    'Kabul Et',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                  }),
+                ],
+              ],
+            );
+          },
         );
       },
     );
@@ -821,6 +1094,17 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Bildirim bölümü ekle
+          Builder(
+            builder: (context) {
+              final authProvider = Provider.of<AuthProvider>(context, listen: false);
+              final currentUser = authProvider.currentUserProfile;
+              if (currentUser != null) {
+                return _buildIncomingRequestsSection(currentUser.id);
+              }
+              return SizedBox.shrink();
+            },
+          ),
           Row(
             children: [
               Container(
@@ -856,27 +1140,6 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
                   foregroundColor: AppTheme.lightTheme.primaryColor,
                 ),
               ),
-              SizedBox(width: 1.w),
-              ElevatedButton.icon(
-                onPressed: _showAddCandidateModal,
-                icon: Icon(Icons.person_add, size: 18), // Küçültüldü
-                label: Text(
-                  'Aday Ekle',
-                  style: TextStyle(fontSize: 12),
-                ), // Küçültüldü
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.lightTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ), // Küçültüldü
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  minimumSize: Size(0, 32), // Yükseklik küçültüldü
-                ),
-              ),
             ],
           ),
           SizedBox(height: 1.2.h), // Küçültüldü
@@ -885,12 +1148,15 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
             builder: (context, child) {
               return Transform.scale(
                 scale: _selectionAnimation.value,
-                child: EnhancedCandidateSelectionCarousel(
-                  candidates: _assignedCandidates,
-                  selectedCandidate: _selectedCandidate,
-                  onCandidateSelected: _onCandidateSelected,
-                  onRemoveCandidate: _removeCandidate,
-                ),
+                child: _assignedCandidates.isEmpty
+                    ? _buildAddCandidateButton()
+                    : EnhancedCandidateSelectionCarousel(
+                        candidates: _assignedCandidates,
+                        selectedCandidate: _selectedCandidate,
+                        onCandidateSelected: _onCandidateSelected,
+                        onRemoveCandidate: _removeCandidate,
+                        onAddCandidate: _showAddCandidateModal,
+                      ),
               );
             },
           ),
@@ -910,30 +1176,34 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   }
 
   void _onCardSwiped(String candidateName, bool isRightSwipe) {
-    // Stack'te sadece 3 kart gösteriliyor: index=0 arkada, index=2 önde
-    final visibleCount = _filteredMatches.length.clamp(0, 3);
-    final topVisualIndex = visibleCount - 1; // En üstteki kartın indexi (max 2)
-    final topVisualCard =
-        topVisualIndex >= 0 ? _filteredMatches[topVisualIndex] : null;
+    // Swipe edilen kartı callback'den gelen isim ile bul
+    UserProfile? swipedCandidate;
+    try {
+      swipedCandidate = _filteredMatches.firstWhere(
+        (candidate) => candidate.fullName == candidateName,
+      );
+    } catch (e) {
+      // İsim ile bulunamadıysa, en üstteki kartı al (fallback)
+      final visibleCount = _filteredMatches.length.clamp(0, 3);
+      final topVisualIndex = visibleCount - 1; // En üstteki kartın indexi (max 2)
+      swipedCandidate =
+          topVisualIndex >= 0 ? _filteredMatches[topVisualIndex] : null;
+    }
 
-    if (isRightSwipe && _selectedCandidate != null && topVisualCard != null) {
-      // ÖNCE kartı listeden çıkar
-      setState(() {
-        _filteredMatches.removeAt(topVisualIndex);
-      });
+    if (swipedCandidate == null || _selectedCandidate == null) {
+      return;
+    }
 
-      // SONRA eşleştirme işlemi yap - selector_status: 'approved'
-      _onMatchProposal(topVisualCard, selectorStatus: 'approved');
-    } else if (!isRightSwipe &&
-        topVisualCard != null &&
-        _selectedCandidate != null) {
-      // ÖNCE kartı listeden çıkar
-      setState(() {
-        _filteredMatches.removeAt(topVisualIndex);
-      });
+    // Kartı listeden çıkar
+    setState(() {
+      _filteredMatches.remove(swipedCandidate);
+    });
 
-      // SONRA rejection kaydı yap - selector_status: 'rejected'
-      _onMatchProposal(topVisualCard, selectorStatus: 'rejected');
+    // Eşleştirme işlemi yap
+    if (isRightSwipe) {
+      _onMatchProposal(swipedCandidate, selectorStatus: 'approved');
+    } else {
+      _onMatchProposal(swipedCandidate, selectorStatus: 'rejected');
     }
   }
 
@@ -1012,6 +1282,58 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     );
   }
 
+  Widget _buildAddCandidateButton() {
+    return Container(
+      height: 8.h,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GestureDetector(
+            onTap: _showAddCandidateModal,
+            child: Container(
+              width: 20.w,
+              height: 5.h,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.6),
+                  width: 2,
+                  style: BorderStyle.solid,
+                ),
+                color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.add,
+                    color: AppTheme.lightTheme.primaryColor,
+                    size: 18,
+                  ),
+                  SizedBox(width: 1.w),
+                  Text(
+                    'Aday Ekle',
+                    style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.lightTheme.primaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAddCandidateModal() async {
     final result = await showModalBottomSheet<UserProfile?>(
       context: context,
@@ -1031,6 +1353,18 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       final currentUser =
           Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) return;
+
+      // Check if candidate is already added
+      final isAlreadyAdded = await UserService().isCandidateAlreadyAdded(
+        selectorId: currentUser.id,
+        candidateId: candidate.id,
+      );
+
+      if (isAlreadyAdded) {
+        _showErrorMessage('Bu aday zaten ekli');
+        return;
+      }
+
       // Adaya istek gönder
       final client = await SupabaseService().client;
       await client.from('selector_candidate_requests').insert({
@@ -1058,6 +1392,7 @@ class _AddCandidateModal extends StatefulWidget {
 class _AddCandidateModalState extends State<_AddCandidateModal> {
   final TextEditingController _searchController = TextEditingController();
   List<UserProfile> _searchResults = [];
+  List<String> _alreadyAddedCandidates = [];
   bool _isLoading = false;
   String? _error;
 
@@ -1073,8 +1408,27 @@ class _AddCandidateModalState extends State<_AddCandidateModal> {
         role: UserRole.candidate,
         limit: 10,
       );
+
+      // Check for already added candidates
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      List<String> alreadyAddedIds = [];
+      if (currentUser != null) {
+        for (final candidate in results) {
+          final isAlreadyAdded = await userService.isCandidateAlreadyAdded(
+            selectorId: currentUser.id,
+            candidateId: candidate.id,
+          );
+          if (isAlreadyAdded) {
+            alreadyAddedIds.add(candidate.id);
+          }
+        }
+      }
+      
       setState(() {
         _searchResults = results;
+        _alreadyAddedCandidates = alreadyAddedIds;
       });
     } catch (e) {
       setState(() {
@@ -1122,19 +1476,62 @@ class _AddCandidateModalState extends State<_AddCandidateModal> {
             ),
           if (!_isLoading && _searchResults.isNotEmpty)
             ..._searchResults.map(
-              (candidate) => ListTile(
-                leading: CircleAvatar(
-                  backgroundImage: candidate.imageUrl != null
-                      ? NetworkImage(candidate.imageUrl!)
-                      : null,
-                  child: candidate.imageUrl == null ? Icon(Icons.person) : null,
-                ),
-                title: Text(candidate.fullName),
-                subtitle: Text(candidate.email),
-                onTap: () {
-                  Navigator.pop(context, candidate);
-                },
-              ),
+              (candidate) {
+                final isAlreadyAdded = _alreadyAddedCandidates.contains(candidate.id);
+                return Column(
+                  children: [
+                    ListTile(
+                      leading: CircleAvatar(
+                        backgroundImage: candidate.imageUrl != null
+                            ? NetworkImage(candidate.imageUrl!)
+                            : null,
+                        child: candidate.imageUrl == null ? Icon(Icons.person) : null,
+                      ),
+                      title: Text(candidate.fullName),
+                      subtitle: Text(candidate.email),
+                      trailing: isAlreadyAdded 
+                          ? Icon(Icons.check_circle, color: Colors.green)
+                          : null,
+                      onTap: () {
+                        if (isAlreadyAdded) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Bu aday zaten ekli'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        } else {
+                          Navigator.pop(context, candidate);
+                        }
+                      },
+                    ),
+                    if (isAlreadyAdded)
+                      Container(
+                        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning, color: Colors.red[700], size: 16),
+                            SizedBox(width: 8),
+                            Text(
+                              'Bu aday zaten ekli',
+                              style: TextStyle(
+                                color: Colors.red[700],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           if (!_isLoading &&
               _searchResults.isEmpty &&

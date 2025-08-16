@@ -17,7 +17,6 @@ import '../presentation/profile_screen/profile_screen.dart';
 import '../presentation/registration_screen/registration_screen.dart';
 import '../presentation/role_selection_screen/role_selection_screen.dart';
 import '../presentation/selector_home_screen/selector_home_screen.dart';
-import '../presentation/selector_registration_screen/selector_registration_screen.dart';
 import '../presentation/splash_screen/splash_screen.dart';
 
 class AppRoutes {
@@ -35,8 +34,6 @@ class AppRoutes {
       '/candidate-profile-detail-screen';
   static const String matchesScreen = '/matches-screen';
   static const String registrationScreen = '/registration-screen';
-  static const String selectorRegistrationScreen =
-      '/selector-registration-screen';
   static const String chatScreen = '/chat-screen';
   static const String improvedChatScreen = '/improved-chat-screen';
   static const String mySelectorsScreen = '/my-selectors-screen';
@@ -62,7 +59,6 @@ class AppRoutes {
         const CandidateProfileDetailScreen(),
     matchesScreen: (context) => const MatchesScreen(),
     registrationScreen: (context) => const RegistrationScreen(),
-    selectorRegistrationScreen: (context) => const SelectorRegistrationScreen(),
     chatScreen: (context) {
       final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       final matchId = args?['matchId'] as String?;

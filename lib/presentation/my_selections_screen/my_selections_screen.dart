@@ -16,6 +16,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
   bool _isLoading = true;
   List<MatchProposal> _proposals = [];
   String? _errorMessage;
+  List<Map<String, dynamic>> _notifications = [];
 
   @override
   void initState() {
@@ -50,8 +51,12 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       final proposals =
           await matchProposalService.getProposalsBySelector(currentUser.id);
 
+      // Load notifications
+      final notifications = await _getSelectorNotifications();
+
       setState(() {
         _proposals = proposals;
+        _notifications = notifications;
       });
     } catch (e) {
       setState(() {
@@ -93,14 +98,17 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
           // Story-like header with recent activities
           _buildActivityStoryHeader(),
           SizedBox(height: 2.h),
-          
+
+          // Notifications for new requests or responses
+          _buildNotificationsSection(),
+          SizedBox(height: 2.h),
+
           // Activity feed style proposals
           _buildActivityFeed(),
         ],
       ),
     );
   }
-
 
   Widget _buildGlassCard({required Widget child}) {
     return Container(
@@ -124,12 +132,221 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
     );
   }
 
+  Widget _buildNotificationsSection() {
+    final notifications = _notifications;
+
+    if (notifications.isEmpty) return SizedBox();
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications_active,
+                  color: Color(0xFF667EEA), size: 20),
+              SizedBox(width: 2.w),
+              Text(
+                'Bildirimler',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3748),
+                ),
+              ),
+              Spacer(),
+              if (notifications.any((n) => n['isNew'] == true))
+                Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${notifications.where((n) => n['isNew'] == true).length}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: 1.h),
+          ...notifications
+              .map((notification) => Container(
+                    margin: EdgeInsets.only(bottom: 1.h),
+                    padding: EdgeInsets.all(3.w),
+                    decoration: BoxDecoration(
+                      color: notification['isNew'] == true
+                          ? Color(0xFF667EEA).withOpacity(0.1)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: notification['isNew'] == true
+                            ? Color(0xFF667EEA).withOpacity(0.3)
+                            : Colors.grey[200]!,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 4.w,
+                          backgroundImage: notification['user_image'] != null
+                              ? NetworkImage(notification['user_image'])
+                              : null,
+                          backgroundColor: notification['type'] == 'accepted'
+                              ? Colors.green.withOpacity(0.2)
+                              : Colors.red.withOpacity(0.2),
+                          child: notification['user_image'] == null
+                              ? Icon(
+                                  notification['type'] == 'accepted'
+                                      ? Icons.check_circle
+                                      : Icons.cancel,
+                                  color: notification['type'] == 'accepted'
+                                      ? Colors.green
+                                      : Colors.red,
+                                  size: 4.w,
+                                )
+                              : null,
+                        ),
+                        SizedBox(width: 3.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                notification['message']! as String,
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: notification['isNew'] == true
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                  color: Color(0xFF2D3748),
+                                ),
+                              ),
+                              SizedBox(height: 0.5.h),
+                              Text(
+                                notification['time']! as String,
+                                style: TextStyle(
+                                  fontSize: 10.sp,
+                                  color: Color(0xFF718096),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (notification['isNew'] == true)
+                          Container(
+                            width: 2.w,
+                            height: 2.w,
+                            decoration: BoxDecoration(
+                              color: Color(0xFF667EEA),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ))
+              .toList(),
+        ],
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getSelectorNotifications() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser == null) return [];
+
+      final client = await SupabaseService().client;
+
+      // Tüm istekleri al (debug için)
+      final allRequests = await client
+          .from('selector_candidate_requests')
+          .select('*')
+          .eq('from_user_id', currentUser.id);
+
+      print('DEBUG - Tüm istekler: $allRequests');
+
+      // Seçiciye gelen yanıtları al
+      final responses = await client
+          .from('selector_candidate_requests')
+          .select('*')
+          .eq('from_user_id', currentUser.id)
+          .inFilter('status', ['accepted', 'rejected'])
+          .order('created_at', ascending: false)
+          .limit(10);
+
+      // Kullanıcı bilgilerini ayrı ayrı çek
+      final userIds =
+          responses.map((r) => r['to_user_id'] as String).toSet().toList();
+      final users = <String, Map<String, dynamic>>{};
+
+      if (userIds.isNotEmpty) {
+        final userProfiles = await client
+            .from('user_profiles')
+            .select('id, full_name, image_url')
+            .inFilter('id', userIds);
+
+        for (final user in userProfiles) {
+          users[user['id']] = user;
+        }
+      }
+
+      print('DEBUG - Filtrelenmiş yanıtlar: $responses');
+
+      List<Map<String, dynamic>> notifications = [];
+
+      for (final response in responses) {
+        final toUserId = response['to_user_id'] as String;
+        final toUser = users[toUserId];
+
+        if (toUser == null) continue; // Skip if user not found
+
+        final relation = response['relation'] ?? 'Aday'; // Varsayılan değer
+        final isAccepted = response['status'] == 'accepted';
+        final createdAt = DateTime.parse(response['created_at']);
+
+        notifications.add({
+          'type': isAccepted ? 'accepted' : 'rejected',
+          'message': isAccepted
+              ? '${toUser['full_name']} isteğinizi kabul etti!'
+              : '${toUser['full_name']} isteğinizi reddetti.',
+          'time': _getTimeAgo(createdAt),
+          'isNew': DateTime.now().difference(createdAt).inHours < 24,
+          'user_image': toUser['image_url'],
+        });
+      }
+
+      print('DEBUG - Son bildirimler: $notifications');
+
+      return notifications;
+    } catch (e) {
+      print('Error getting notifications: $e');
+      return [];
+    }
+  }
+
   Widget _buildActivityStoryHeader() {
-    final recentMatches = _proposals.where((p) => 
-      p.status == AcceptanceStatus.accepted && 
-      p.targetStatus == AcceptanceStatus.accepted &&
-      DateTime.now().difference(p.createdAt).inDays <= 7
-    ).take(3).toList();
+    final recentMatches = _proposals
+        .where((p) =>
+            p.status == AcceptanceStatus.accepted &&
+            p.targetStatus == AcceptanceStatus.accepted &&
+            DateTime.now().difference(p.createdAt).inDays <= 7)
+        .take(3)
+        .toList();
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w),
@@ -151,7 +368,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
             ],
           ),
           SizedBox(height: 1.h),
-          
+
           // Story-like horizontal scroll
           if (recentMatches.isNotEmpty)
             SizedBox(
@@ -175,7 +392,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               decoration: BoxDecoration(
                 color: Colors.grey[100],
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey[300]!, style: BorderStyle.solid),
+                border: Border.all(
+                    color: Colors.grey[300]!, style: BorderStyle.solid),
               ),
               child: Center(
                 child: Text(
@@ -222,13 +440,13 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   top: 1.w,
                   child: CircleAvatar(
                     radius: 8.w,
-                    backgroundImage: proposal.candidateImageUrl != null 
-                      ? NetworkImage(proposal.candidateImageUrl!) 
-                      : null,
+                    backgroundImage: proposal.candidateImageUrl != null
+                        ? NetworkImage(proposal.candidateImageUrl!)
+                        : null,
                     backgroundColor: Colors.grey[300],
-                    child: proposal.candidateImageUrl == null 
-                      ? Icon(Icons.person, size: 6.w, color: Colors.grey[600]) 
-                      : null,
+                    child: proposal.candidateImageUrl == null
+                        ? Icon(Icons.person, size: 6.w, color: Colors.grey[600])
+                        : null,
                   ),
                 ),
                 Positioned(
@@ -236,13 +454,13 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   bottom: 1.w,
                   child: CircleAvatar(
                     radius: 6.w,
-                    backgroundImage: proposal.targetCandidateImageUrl != null 
-                      ? NetworkImage(proposal.targetCandidateImageUrl!) 
-                      : null,
+                    backgroundImage: proposal.targetCandidateImageUrl != null
+                        ? NetworkImage(proposal.targetCandidateImageUrl!)
+                        : null,
                     backgroundColor: Colors.grey[300],
-                    child: proposal.targetCandidateImageUrl == null 
-                      ? Icon(Icons.person, size: 4.w, color: Colors.grey[600]) 
-                      : null,
+                    child: proposal.targetCandidateImageUrl == null
+                        ? Icon(Icons.person, size: 4.w, color: Colors.grey[600])
+                        : null,
                   ),
                 ),
                 Center(
@@ -273,24 +491,26 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w),
       child: Column(
-        children: _filteredProposals.map((proposal) => 
-          Container(
-            margin: EdgeInsets.only(bottom: 2.h),
-            child: _buildActivityCard(proposal),
-          )
-        ).toList(),
+        children: _filteredProposals
+            .map((proposal) => Container(
+                  margin: EdgeInsets.only(bottom: 2.h),
+                  child: _buildActivityCard(proposal),
+                ))
+            .toList(),
       ),
     );
   }
 
   Widget _buildActivityCard(MatchProposal proposal) {
-    final isMatched = proposal.status == AcceptanceStatus.accepted && 
-                     proposal.targetStatus == AcceptanceStatus.accepted;
-    final isRejected = proposal.status == AcceptanceStatus.rejected || 
-                      proposal.targetStatus == AcceptanceStatus.rejected;
-    
+    final isMatched = proposal.status == AcceptanceStatus.accepted &&
+        proposal.targetStatus == AcceptanceStatus.accepted;
+    final isRejected = proposal.status == AcceptanceStatus.rejected ||
+        proposal.targetStatus == AcceptanceStatus.rejected;
+
     return GestureDetector(
-      onTap: () => isMatched ? _showMatchCelebration(proposal) : _showProposalDetails(proposal),
+      onTap: () => isMatched
+          ? _showMatchCelebration(proposal)
+          : _showProposalDetails(proposal),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -303,7 +523,9 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
             ),
           ],
         ),
-        child: isMatched ? _buildMatchCard(proposal) : _buildRegularActivityCard(proposal),
+        child: isMatched
+            ? _buildMatchCard(proposal)
+            : _buildRegularActivityCard(proposal),
       ),
     );
   }
@@ -364,7 +586,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
             ],
           ),
           SizedBox(height: 3.h),
-          
+
           // Big "IT'S A MATCH!" section
           Container(
             width: double.infinity,
@@ -385,27 +607,28 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   children: [
                     CircleAvatar(
                       radius: 8.w,
-                      backgroundImage: proposal.candidateImageUrl != null 
-                        ? NetworkImage(proposal.candidateImageUrl!) 
-                        : null,
+                      backgroundImage: proposal.candidateImageUrl != null
+                          ? NetworkImage(proposal.candidateImageUrl!)
+                          : null,
                       backgroundColor: Colors.white.withOpacity(0.3),
-                      child: proposal.candidateImageUrl == null 
-                        ? Icon(Icons.person, color: Colors.white, size: 6.w) 
-                        : null,
+                      child: proposal.candidateImageUrl == null
+                          ? Icon(Icons.person, color: Colors.white, size: 6.w)
+                          : null,
                     ),
                     Container(
                       margin: EdgeInsets.symmetric(horizontal: 4.w),
-                      child: Icon(Icons.favorite, color: Colors.white, size: 8.w),
+                      child:
+                          Icon(Icons.favorite, color: Colors.white, size: 8.w),
                     ),
                     CircleAvatar(
                       radius: 8.w,
-                      backgroundImage: proposal.targetCandidateImageUrl != null 
-                        ? NetworkImage(proposal.targetCandidateImageUrl!) 
-                        : null,
+                      backgroundImage: proposal.targetCandidateImageUrl != null
+                          ? NetworkImage(proposal.targetCandidateImageUrl!)
+                          : null,
                       backgroundColor: Colors.white.withOpacity(0.3),
-                      child: proposal.targetCandidateImageUrl == null 
-                        ? Icon(Icons.person, color: Colors.white, size: 6.w) 
-                        : null,
+                      child: proposal.targetCandidateImageUrl == null
+                          ? Icon(Icons.person, color: Colors.white, size: 6.w)
+                          : null,
                     ),
                   ],
                 ),
@@ -431,23 +654,24 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               ],
             ),
           ),
-          
+
           SizedBox(height: 2.h),
-          
+
           // Social engagement
           Row(
             children: [
               Row(
-                children: List.generate(3, (index) => 
-                  Container(
-                    margin: EdgeInsets.only(right: 1.w),
-                    child: CircleAvatar(
-                      radius: 2.5.w,
-                      backgroundColor: Colors.grey[300],
-                      child: Icon(Icons.person, size: 3.w, color: Colors.grey[600]),
-                    ),
-                  )
-                ),
+                children: List.generate(
+                    3,
+                    (index) => Container(
+                          margin: EdgeInsets.only(right: 1.w),
+                          child: CircleAvatar(
+                            radius: 2.5.w,
+                            backgroundColor: Colors.grey[300],
+                            child: Icon(Icons.person,
+                                size: 3.w, color: Colors.grey[600]),
+                          ),
+                        )),
               ),
               SizedBox(width: 2.w),
               Text(
@@ -468,7 +692,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.chat_bubble_outline, size: 3.w, color: Color(0xFF667EEA)),
+                    Icon(Icons.chat_bubble_outline,
+                        size: 3.w, color: Color(0xFF667EEA)),
                     SizedBox(width: 1.w),
                     Text(
                       'Send Message',
@@ -489,9 +714,9 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
   }
 
   Widget _buildRegularActivityCard(MatchProposal proposal) {
-    final isRejected = proposal.status == AcceptanceStatus.rejected || 
-                      proposal.targetStatus == AcceptanceStatus.rejected;
-    
+    final isRejected = proposal.status == AcceptanceStatus.rejected ||
+        proposal.targetStatus == AcceptanceStatus.rejected;
+
     return Container(
       padding: EdgeInsets.all(4.w),
       child: Column(
@@ -516,7 +741,10 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   text: TextSpan(
                     style: TextStyle(fontSize: 14.sp, color: Color(0xFF2D3748)),
                     children: [
-                      TextSpan(text: isRejected ? 'You proposed ' : 'You are shipping '),
+                      TextSpan(
+                          text: isRejected
+                              ? 'You proposed '
+                              : 'You are shipping '),
                       TextSpan(
                         text: '${proposal.candidateName}',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -538,7 +766,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
             ],
           ),
           SizedBox(height: 2.h),
-          
+
           // Profile images row
           Row(
             children: [
@@ -546,25 +774,26 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                 children: [
                   CircleAvatar(
                     radius: 6.w,
-                    backgroundImage: proposal.candidateImageUrl != null 
-                      ? NetworkImage(proposal.candidateImageUrl!) 
-                      : null,
+                    backgroundImage: proposal.candidateImageUrl != null
+                        ? NetworkImage(proposal.candidateImageUrl!)
+                        : null,
                     backgroundColor: Colors.grey[300],
-                    child: proposal.candidateImageUrl == null 
-                      ? Icon(Icons.person, size: 4.w, color: Colors.grey[600]) 
-                      : null,
+                    child: proposal.candidateImageUrl == null
+                        ? Icon(Icons.person, size: 4.w, color: Colors.grey[600])
+                        : null,
                   ),
                   Positioned(
                     right: -3.w,
                     child: CircleAvatar(
                       radius: 5.w,
-                      backgroundImage: proposal.targetCandidateImageUrl != null 
-                        ? NetworkImage(proposal.targetCandidateImageUrl!) 
-                        : null,
+                      backgroundImage: proposal.targetCandidateImageUrl != null
+                          ? NetworkImage(proposal.targetCandidateImageUrl!)
+                          : null,
                       backgroundColor: Colors.grey[300],
-                      child: proposal.targetCandidateImageUrl == null 
-                        ? Icon(Icons.person, size: 3.w, color: Colors.grey[600]) 
-                        : null,
+                      child: proposal.targetCandidateImageUrl == null
+                          ? Icon(Icons.person,
+                              size: 3.w, color: Colors.grey[600])
+                          : null,
                     ),
                   ),
                 ],
@@ -584,10 +813,13 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                     ),
                     SizedBox(height: 0.5.h),
                     Text(
-                      isRejected ? 'Proposal declined' : 'Waiting for response...',
+                      isRejected
+                          ? 'Proposal declined'
+                          : 'Waiting for response...',
                       style: TextStyle(
                         fontSize: 11.sp,
-                        color: isRejected ? Color(0xFFE53E3E) : Color(0xFFED8936),
+                        color:
+                            isRejected ? Color(0xFFE53E3E) : Color(0xFFED8936),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -603,7 +835,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.remove_red_eye, size: 3.w, color: Colors.grey[600]),
+                    Icon(Icons.remove_red_eye,
+                        size: 3.w, color: Colors.grey[600]),
                     SizedBox(width: 1.w),
                     Text(
                       'View',
@@ -622,7 +855,6 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       ),
     );
   }
-
 
   String _getTimeAgo(DateTime dateTime) {
     final now = DateTime.now();
@@ -839,7 +1071,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               ),
             ],
           ),
-          
+
           // Modern Body Content
           SliverToBoxAdapter(
             child: _buildModernBody(),
@@ -880,10 +1112,37 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
             label: 'Ana Sayfa',
           ),
           BottomNavigationBarItem(
-            icon: CustomIconWidget(
-              iconName: 'list',
-              color: AppTheme.lightTheme.colorScheme.primary,
-              size: 24,
+            icon: Stack(
+              children: [
+                CustomIconWidget(
+                  iconName: 'list',
+                  color: AppTheme.lightTheme.colorScheme.primary,
+                  size: 24,
+                ),
+                if (_notifications.any((n) => n['isNew'] == true))
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: EdgeInsets.all(1.w),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1),
+                      ),
+                      constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text(
+                        '${_notifications.where((n) => n['isNew'] == true).length}',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             label: 'Önerilerim',
           ),
@@ -1026,9 +1285,11 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
   }
 
   String _getStatusText(MatchProposal proposal) {
-    if (proposal.status == AcceptanceStatus.accepted && proposal.targetStatus == AcceptanceStatus.accepted) {
+    if (proposal.status == AcceptanceStatus.accepted &&
+        proposal.targetStatus == AcceptanceStatus.accepted) {
       return 'Eşleşti ✅';
-    } else if (proposal.status == AcceptanceStatus.rejected || proposal.targetStatus == AcceptanceStatus.rejected) {
+    } else if (proposal.status == AcceptanceStatus.rejected ||
+        proposal.targetStatus == AcceptanceStatus.rejected) {
       return 'Reddedildi ❌';
     } else {
       return 'Bekliyor ⏳';
@@ -1066,39 +1327,40 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                 ],
               ),
               SizedBox(height: 2.h),
-              
+
               // Profile images
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   CircleAvatar(
                     radius: 12.w,
-                    backgroundImage: proposal.candidateImageUrl != null 
-                      ? NetworkImage(proposal.candidateImageUrl!) 
-                      : null,
+                    backgroundImage: proposal.candidateImageUrl != null
+                        ? NetworkImage(proposal.candidateImageUrl!)
+                        : null,
                     backgroundColor: Colors.white.withOpacity(0.3),
-                    child: proposal.candidateImageUrl == null 
-                      ? Icon(Icons.person, color: Colors.white, size: 8.w) 
-                      : null,
+                    child: proposal.candidateImageUrl == null
+                        ? Icon(Icons.person, color: Colors.white, size: 8.w)
+                        : null,
                   ),
                   Container(
                     margin: EdgeInsets.symmetric(horizontal: 6.w),
-                    child: Icon(Icons.favorite, color: Colors.white, size: 12.w),
+                    child:
+                        Icon(Icons.favorite, color: Colors.white, size: 12.w),
                   ),
                   CircleAvatar(
                     radius: 12.w,
-                    backgroundImage: proposal.targetCandidateImageUrl != null 
-                      ? NetworkImage(proposal.targetCandidateImageUrl!) 
-                      : null,
+                    backgroundImage: proposal.targetCandidateImageUrl != null
+                        ? NetworkImage(proposal.targetCandidateImageUrl!)
+                        : null,
                     backgroundColor: Colors.white.withOpacity(0.3),
-                    child: proposal.targetCandidateImageUrl == null 
-                      ? Icon(Icons.person, color: Colors.white, size: 8.w) 
-                      : null,
+                    child: proposal.targetCandidateImageUrl == null
+                        ? Icon(Icons.person, color: Colors.white, size: 8.w)
+                        : null,
                   ),
                 ],
               ),
               SizedBox(height: 3.h),
-              
+
               // Match text
               Text(
                 "EŞLEŞTİNİZ",
@@ -1121,7 +1383,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: 4.h),
-              
+
               // Action buttons
               Row(
                 children: [
@@ -1131,7 +1393,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withOpacity(0.3)),
+                        border:
+                            Border.all(color: Colors.white.withOpacity(0.3)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1166,7 +1429,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.chat_bubble, color: Color(0xFF667EEA), size: 5.w),
+                            Icon(Icons.chat_bubble,
+                                color: Color(0xFF667EEA), size: 5.w),
                             SizedBox(width: 2.w),
                             Text(
                               'Send Message',
@@ -1190,4 +1454,3 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
     );
   }
 }
-

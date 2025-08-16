@@ -9,6 +9,7 @@ class EnhancedCandidateSelectionCarousel extends StatefulWidget {
   final UserProfile? selectedCandidate;
   final ValueChanged<UserProfile> onCandidateSelected;
   final ValueChanged<UserProfile> onRemoveCandidate;
+  final VoidCallback? onAddCandidate;
 
   const EnhancedCandidateSelectionCarousel({
     super.key,
@@ -16,6 +17,7 @@ class EnhancedCandidateSelectionCarousel extends StatefulWidget {
     required this.selectedCandidate,
     required this.onCandidateSelected,
     required this.onRemoveCandidate,
+    this.onAddCandidate,
   });
 
   @override
@@ -29,22 +31,27 @@ class _EnhancedCandidateSelectionCarouselState
   Widget build(BuildContext context) {
     return SizedBox(
       height: 8.h,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: 4.w),
-        itemCount: widget.candidates.length,
-        itemBuilder: (context, index) {
-          final candidate = widget.candidates[index];
-          final isSelected = widget.selectedCandidate?.id == candidate.id;
+      child: widget.candidates.isEmpty
+          ? _buildAddCandidateButton()
+          : ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: BouncingScrollPhysics(),
+              padding: EdgeInsets.symmetric(horizontal: 4.w),
+              itemCount: widget.candidates.length + 1, // +1 for add button
+              itemBuilder: (context, index) {
+                if (index == widget.candidates.length) {
+                  return _buildAddCandidateButton();
+                }
+                final candidate = widget.candidates[index];
+                final isSelected = widget.selectedCandidate?.id == candidate.id;
 
-          return AnimatedContainer(
-            duration: Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            margin: EdgeInsets.symmetric(horizontal: 1.w),
-            child: GestureDetector(
-              onTap: () => widget.onCandidateSelected(candidate),
-              onLongPress: () => _showRemoveDialog(candidate),
+                return AnimatedContainer(
+                  duration: Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  margin: EdgeInsets.symmetric(horizontal: 1.w),
+                  child: GestureDetector(
+                    onTap: () => widget.onCandidateSelected(candidate),
+                    onLongPress: () => _showRemoveDialog(candidate),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -187,5 +194,86 @@ class _EnhancedCandidateSelectionCarouselState
     if (confirm == true) {
       widget.onRemoveCandidate(candidate);
     }
+  }
+
+  Widget _buildAddCandidateButton() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 2.w),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GestureDetector(
+            onTap: widget.onAddCandidate ?? () {
+              _showAddCandidateDialog();
+            },
+            child: AnimatedContainer(
+              duration: Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: 10.w,
+              height: 10.w,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.6),
+                  width: 2,
+                  style: BorderStyle.solid,
+                ),
+                color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.add,
+                color: AppTheme.lightTheme.primaryColor,
+                size: 5.w,
+              ),
+            ),
+          ),
+          SizedBox(height: 0.5.h),
+          Text(
+            'Aday Ekle',
+            style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
+              fontWeight: FontWeight.w500,
+              fontSize: 8.sp,
+              color: AppTheme.lightTheme.primaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddCandidateDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Aday Ekleme',
+          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Yeni aday eklemek için lütfen ana sayfadaki "Aday Ekle" butonunu kullanın.',
+          style: AppTheme.lightTheme.textTheme.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Tamam',
+              style: TextStyle(
+                color: AppTheme.lightTheme.primaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

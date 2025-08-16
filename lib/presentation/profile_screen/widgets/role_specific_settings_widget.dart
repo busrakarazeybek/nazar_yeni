@@ -61,47 +61,15 @@ class _RoleSpecificSettingsWidgetState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Eşleşme Tercihleri',
+          'Seçici Ayarları',
           style: AppTheme.lightTheme.textTheme.labelMedium,
         ),
         SizedBox(height: 2.h),
 
-        // Search Radius
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Arama Yarıçapı',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-            ),
-            Text(
-              '${_searchRadius.round()} km',
-              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                color: AppTheme.lightTheme.primaryColor,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 1.h),
-        Slider(
-          value: _searchRadius,
-          min: 5,
-          max: 100,
-          divisions: 19,
-          onChanged: (value) {
-            setState(() {
-              _searchRadius = value;
-            });
-            _updateData();
-          },
-        ),
-        SizedBox(height: 2.h),
-
-        // Match Preferences
+        // Service Preferences
         _buildSettingTile(
-          'Aktif Eşleşme',
-          'Yeni adayları otomatik olarak göster',
+          'Aktif Hizmet',
+          'Yeni adayları otomatik olarak görüntüle',
           _showOnlineStatus,
           (value) {
             setState(() {
@@ -139,129 +107,6 @@ class _RoleSpecificSettingsWidgetState
         ),
         SizedBox(height: 2.h),
 
-        // --- YENİ: Tercih Alanları ---
-        Text(
-          'Eşleşme Tercihleri',
-          style: AppTheme.lightTheme.textTheme.labelMedium,
-        ),
-        SizedBox(height: 1.h),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                initialValue:
-                    widget.userData['preferredAgeMin']?.toString() ?? '',
-                decoration: InputDecoration(
-                  labelText: 'En küçük yaş',
-                  helperText: '18-100 arası',
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return null;
-                  final parsedValue = int.tryParse(value);
-                  if (parsedValue == null) return 'Geçerli bir sayı girin';
-                  if (parsedValue < 18 || parsedValue > 100) {
-                    return '18-100 arası olmalı';
-                  }
-                  return null;
-                },
-                onChanged: (val) {
-                  final parsedValue = int.tryParse(val);
-                  if (parsedValue != null && parsedValue >= 18 && parsedValue <= 100) {
-                    widget.userData['preferredAgeMin'] = parsedValue;
-                    widget.onDataChanged();
-                  } else if (val.isEmpty) {
-                    widget.userData['preferredAgeMin'] = null;
-                    widget.onDataChanged();
-                  } else if (parsedValue != null && (parsedValue < 18 || parsedValue > 100)) {
-                    // Geçersiz yaş için uyarı göster
-                    _showAgeWarning();
-                  }
-                },
-              ),
-            ),
-            SizedBox(width: 2.w),
-            Expanded(
-              child: TextFormField(
-                initialValue:
-                    widget.userData['preferredAgeMax']?.toString() ?? '',
-                decoration: InputDecoration(
-                  labelText: 'En büyük yaş',
-                  helperText: '18-100 arası',
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return null;
-                  final parsedValue = int.tryParse(value);
-                  if (parsedValue == null) return 'Geçerli bir sayı girin';
-                  if (parsedValue < 18 || parsedValue > 100) {
-                    return '18-100 arası olmalı';
-                  }
-                  final minAge = widget.userData['preferredAgeMin'] as int?;
-                  if (minAge != null && parsedValue < minAge) {
-                    return 'En küçük yaştan büyük olmalı';
-                  }
-                  return null;
-                },
-                onChanged: (val) {
-                  final parsedValue = int.tryParse(val);
-                  if (parsedValue != null && parsedValue >= 18 && parsedValue <= 100) {
-                    widget.userData['preferredAgeMax'] = parsedValue;
-                    widget.onDataChanged();
-                  } else if (val.isEmpty) {
-                    widget.userData['preferredAgeMax'] = null;
-                    widget.onDataChanged();
-                  } else if (parsedValue != null && (parsedValue < 18 || parsedValue > 100)) {
-                    // Geçersiz yaş için uyarı göster
-                    _showAgeWarning();
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 1.h),
-        TextFormField(
-          initialValue:
-              (widget.userData['preferredCities'] as List?)?.join(', ') ?? '',
-          decoration: InputDecoration(
-            labelText: 'Tercih edilen şehirler (virgülle ayır)',
-          ),
-          onChanged: (val) {
-            widget.userData['preferredCities'] = val
-                .split(',')
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList();
-            widget.onDataChanged();
-          },
-        ),
-        SizedBox(height: 1.h),
-        Text(
-          'Tercih edilen cinsiyet',
-          style: AppTheme.lightTheme.textTheme.bodyMedium,
-        ),
-        SizedBox(height: 1.h),
-        _buildGenderSelection(),
-        SizedBox(height: 1.h),
-        TextFormField(
-          initialValue:
-              (widget.userData['preferredInterests'] as List?)?.join(', ') ??
-                  '',
-          decoration: InputDecoration(
-            labelText: 'Tercih edilen ilgi alanları (virgülle ayır)',
-          ),
-          onChanged: (val) {
-            widget.userData['preferredInterests'] = val
-                .split(',')
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList();
-            widget.onDataChanged();
-          },
-        ),
-        SizedBox(height: 2.h),
-        // --- /YENİ ---
 
         // Privacy Level
         Text(
@@ -431,7 +276,7 @@ class _RoleSpecificSettingsWidgetState
           Row(
             children: [
               CustomIconWidget(
-                iconName: widget.userRole == 'Selector'
+                iconName: widget.userRole == 'selector'
                     ? 'admin_panel_settings'
                     : 'security',
                 color: AppTheme.lightTheme.primaryColor,
@@ -439,13 +284,13 @@ class _RoleSpecificSettingsWidgetState
               ),
               SizedBox(width: 2.w),
               Text(
-                '${widget.userRole} Ayarları',
+                widget.userRole == 'selector' ? 'Seçici Ayarları' : 'Aday Ayarları',
                 style: AppTheme.lightTheme.textTheme.titleMedium,
               ),
             ],
           ),
           SizedBox(height: 3.h),
-          widget.userRole == 'Selector'
+          widget.userRole == 'selector'
               ? _buildSelectorSettings()
               : _buildCandidateSettings(),
         ],

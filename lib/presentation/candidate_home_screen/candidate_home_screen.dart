@@ -197,34 +197,168 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   // 2. Kabul/ret fonksiyonları
   Future<void> _handleAcceptRequest(Map<String, dynamic> req) async {
-    final client = await SupabaseService().client;
-    await client
-        .from('selector_candidate_requests')
-        .update({'status': 'accepted'}).eq('id', req['id']);
-
-    // Gerçek ilişkiyi oluştur
-    if (req['type'] == 'selector') {
-      // Aday, seçiciyi kendi listesine ekler (selector_id: to_user_id, candidate_id: from_user_id)
-      await UserService().addCandidateToSelector(
-        selectorId: req['to_user_id'],
-        candidateId: req['from_user_id'],
+    try {
+      // Loading dialog göster
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: EdgeInsets.all(6.w),
+            decoration: BoxDecoration(
+              color: AppTheme.lightTheme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(12.w),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  color: AppTheme.lightTheme.primaryColor,
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'İstek kabul ediliyor...',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
       );
-    } else if (req['type'] == 'candidate') {
-      // Seçici, adayı kendi listesine ekler (selector_id: from_user_id, candidate_id: to_user_id)
-      await UserService().addCandidateToSelector(
-        selectorId: req['from_user_id'],
-        candidateId: req['to_user_id'],
+      
+      final client = await SupabaseService().client;
+      await client
+          .from('selector_candidate_requests')
+          .update({
+            'status': 'accepted',
+          }).eq('id', req['id']);
+
+      // Gerçek ilişkiyi oluştur
+      if (req['type'] == 'selector') {
+        // Aday, seçiciyi kendi listesine ekler (selector_id: to_user_id, candidate_id: from_user_id)
+        await UserService().addCandidateToSelector(
+          selectorId: req['to_user_id'],
+          candidateId: req['from_user_id'],
+        );
+      } else if (req['type'] == 'candidate') {
+        // Seçici, adayı kendi listesine ekler (selector_id: from_user_id, candidate_id: to_user_id)
+        await UserService().addCandidateToSelector(
+          selectorId: req['from_user_id'],
+          candidateId: req['to_user_id'],
+        );
+      }
+      
+      // Loading dialog'ı kapat
+      Navigator.of(context).pop();
+      
+      // Başarı mesajı göster
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 2.w),
+              Text('İstek başarıyla kabul edildi!'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+      
+      // Verileri yenile
+      await _loadData();
+    } catch (e) {
+      // Loading dialog'ı kapat
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İstek kabul edilirken hata oluştu: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
-    setState(() {});
   }
 
   Future<void> _handleRejectRequest(Map<String, dynamic> req) async {
-    final client = await SupabaseService().client;
-    await client
-        .from('selector_candidate_requests')
-        .update({'status': 'rejected'}).eq('id', req['id']);
-    setState(() {});
+    try {
+      // Loading dialog göster
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: EdgeInsets.all(6.w),
+            decoration: BoxDecoration(
+              color: AppTheme.lightTheme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(12.w),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  color: AppTheme.lightTheme.primaryColor,
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'İstek reddediliyor...',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      
+      final client = await SupabaseService().client;
+      await client
+          .from('selector_candidate_requests')
+          .update({
+            'status': 'rejected',
+          }).eq('id', req['id']);
+      
+      // Loading dialog'ı kapat
+      Navigator.of(context).pop();
+      
+      // Başarı mesajı göster
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.info, color: Colors.white),
+              SizedBox(width: 2.w),
+              Text('İstek reddedildi'),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+      
+      // Verileri yenile
+      await _loadData();
+    } catch (e) {
+      // Loading dialog'ı kapat
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İstek reddedilirken hata oluştu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   // 3. Gelen istekler widget'ı
@@ -247,34 +381,240 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 1.h),
-                  child: Text(
-                    'Gelen İstekler',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 4.w,
+                    vertical: 2.h,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(2.w),
+                        decoration: BoxDecoration(
+                          color: AppTheme.lightTheme.primaryColor,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.notifications_active,
+                          color: Colors.white,
+                          size: 5.w,
+                        ),
+                      ),
+                      SizedBox(width: 3.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Gelen İstekler',
+                              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.lightTheme.primaryColor,
+                              ),
+                            ),
+                            Text(
+                              '${requests.length} yeni istek',
+                              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                color: AppTheme.lightTheme.primaryColor.withOpacity(0.8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 2.w,
+                          vertical: 0.5.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.lightTheme.primaryColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${requests.length}',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                SizedBox(height: 2.h),
                 ...List.generate(requests.length, (i) {
                   final req = requests[i];
                   final fromUser = userProfiles[i];
                   final fromUserName = fromUser.fullName ?? req['from_user_id'];
+                  final relation = req['relation'] ?? '';
                   return Card(
-                    child: ListTile(
-                      title: Text(
-                        req['type'] == 'selector'
-                            ? '$fromUserName sizi seçici olarak eklemek istiyor'
-                            : '$fromUserName sizi aday olarak eklemek istiyor',
+                    elevation: 2,
+                    margin: EdgeInsets.symmetric(vertical: 1.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Container(
+                      padding: EdgeInsets.all(3.w),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.lightTheme.primaryColor.withOpacity(0.05),
+                            AppTheme.lightTheme.primaryColor.withOpacity(0.02),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          IconButton(
-                            icon: Icon(Icons.check, color: Colors.green),
-                            onPressed: () => _handleAcceptRequest(req),
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 6.w,
+                                backgroundImage: fromUser.imageUrl != null
+                                    ? NetworkImage(fromUser.imageUrl!)
+                                    : null,
+                                child: fromUser.imageUrl == null
+                                    ? Icon(Icons.person, size: 4.w)
+                                    : null,
+                              ),
+                              SizedBox(width: 3.w),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      fromUserName,
+                                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (relation.isNotEmpty)
+                                      Text(
+                                        '$relation olarak',
+                                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                          color: AppTheme.lightTheme.primaryColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 2.w,
+                                  vertical: 0.5.h,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.orange[200]!,
+                                  ),
+                                ),
+                                child: Text(
+                                  'YENİ',
+                                  style: TextStyle(
+                                    color: Colors.orange[700],
+                                    fontSize: 10.sp,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            icon: Icon(Icons.close, color: Colors.red),
-                            onPressed: () => _handleRejectRequest(req),
+                          SizedBox(height: 2.h),
+                          Container(
+                            padding: EdgeInsets.all(3.w),
+                            decoration: BoxDecoration(
+                              color: AppTheme.lightTheme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.lightTheme.colorScheme.outline.withOpacity(0.2),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: AppTheme.lightTheme.primaryColor,
+                                  size: 5.w,
+                                ),
+                                SizedBox(width: 2.w),
+                                Expanded(
+                                  child: Text(
+                                    req['type'] == 'selector'
+                                        ? 'Sizi seçici olarak eklemek istiyor'
+                                        : 'Sizi aday olarak eklemek istiyor',
+                                    style: AppTheme.lightTheme.textTheme.bodyMedium,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 2.h),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _handleRejectRequest(req),
+                                  icon: Icon(
+                                    Icons.close,
+                                    color: Colors.red,
+                                    size: 4.w,
+                                  ),
+                                  label: Text(
+                                    'Reddet',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(color: Colors.red),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 3.w),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _handleAcceptRequest(req),
+                                  icon: Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 4.w,
+                                  ),
+                                  label: Text(
+                                    'Kabul Et',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1630,28 +1970,47 @@ class AddSelectorDialog extends StatefulWidget {
 }
 
 class _AddSelectorDialogState extends State<AddSelectorDialog> {
-  final _emailController = TextEditingController();
+  final _searchController = TextEditingController();
+  final _customRelationController = TextEditingController();
   String? _selectedRelation;
   UserProfile? _selectedUser;
   List<UserProfile> _searchResults = [];
   bool _isSearching = false;
+  bool _isCustomRelation = false;
+  String _searchType = 'email'; // 'email' or 'phone'
+  String? _duplicateWarning;
+  
   final List<String> _relations = [
     'Kardeş',
-    'Arkadaş',
+    'Arkadaş', 
     'Anne',
     'Baba',
-    'Diğer',
+    'En yakın kanki',
+    'Bacı',
+    'Kuzen',
+    'Özel İlişki',
   ];
 
   void _searchUser(String query) async {
     setState(() => _isSearching = true);
     try {
       final userService = UserService();
-      final results = await userService.searchUsers(
-        query: query,
-        role: UserRole.selector,
-        limit: 10,
-      );
+      List<UserProfile> results = [];
+      
+      if (_searchType == 'email') {
+        results = await userService.searchUsers(
+          query: query,
+          role: UserRole.selector,
+          limit: 10,
+        );
+      } else if (_searchType == 'phone') {
+        results = await userService.searchUsersByPhone(
+          phone: query,
+          role: UserRole.selector,
+          limit: 10,
+        );
+      }
+      
       setState(() {
         _searchResults = results;
       });
@@ -1664,17 +2023,70 @@ class _AddSelectorDialogState extends State<AddSelectorDialog> {
     }
   }
 
+  Future<void> _selectUser(UserProfile user) async {
+    setState(() {
+      _selectedUser = user;
+      _duplicateWarning = null;
+    });
+
+    // Check if this selector is already added
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final isAlreadyAdded = await UserService().isSelectorAlreadyAdded(
+          candidateId: currentUser.id,
+          selectorId: user.id,
+        );
+        
+        if (isAlreadyAdded) {
+          setState(() {
+            _duplicateWarning = 'Seçiciniz zaten eklidir';
+          });
+        }
+      }
+    } catch (e) {
+      print('Error checking duplicate selector: $e');
+    }
+  }
+
   void _addSelector() {
-    if (_selectedUser != null && _selectedRelation != null) {
+    // Check for duplicate warning
+    if (_duplicateWarning != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_duplicateWarning!),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    String? finalRelation = _selectedRelation;
+    
+    // Check if custom relation is selected and use custom text
+    if (_selectedRelation == 'Özel İlişki' && _customRelationController.text.trim().isNotEmpty) {
+      finalRelation = _customRelationController.text.trim();
+    }
+    
+    if (_selectedUser != null && finalRelation != null && finalRelation.isNotEmpty) {
       Navigator.pop(
         context,
-        AddSelectorResult(user: _selectedUser, relation: _selectedRelation),
+        AddSelectorResult(user: _selectedUser, relation: finalRelation),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Lütfen ilişki ve kullanıcı seçin.')),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _customRelationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -1689,9 +2101,14 @@ class _AddSelectorDialogState extends State<AddSelectorDialog> {
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Seçici Ekle', style: Theme.of(context).textTheme.titleLarge),
-            SizedBox(height: 16),
+            SizedBox(height: 20),
+            
+            // Relationship selection
+            Text('İlişkiniz:', style: Theme.of(context).textTheme.titleMedium),
+            SizedBox(height: 8),
             DropdownButtonFormField<String>(
               value: _selectedRelation,
               items: _relations
@@ -1702,40 +2119,165 @@ class _AddSelectorDialogState extends State<AddSelectorDialog> {
                     ),
                   )
                   .toList(),
-              onChanged: (val) => setState(() => _selectedRelation = val),
-              decoration: InputDecoration(labelText: 'İlişkiniz'),
-            ),
-            SizedBox(height: 16),
-            TextField(
+              onChanged: (val) => setState(() {
+                _selectedRelation = val;
+                _isCustomRelation = val == 'Özel İlişki';
+              }),
               decoration: InputDecoration(
-                labelText: 'Görücü ara veya e-posta gir',
+                labelText: 'İlişki seçin',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            
+            // Custom relationship input
+            if (_selectedRelation == 'Özel İlişki') ...[
+              SizedBox(height: 12),
+              TextField(
+                controller: _customRelationController,
+                decoration: InputDecoration(
+                  labelText: 'Özel ilişki tanımınız (örn: en yakın kankim, bacım)',
+                  hintText: 'İlişkinizi yazın...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+            
+            SizedBox(height: 20),
+            
+            // Search type selection
+            Text('Arama türü:', style: Theme.of(context).textTheme.titleMedium),
+            SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: Text('E-posta'),
+                    value: 'email',
+                    groupValue: _searchType,
+                    onChanged: (val) => setState(() {
+                      _searchType = val!;
+                      _searchResults.clear();
+                      _searchController.clear();
+                    }),
+                  ),
+                ),
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: Text('Telefon'),
+                    value: 'phone',
+                    groupValue: _searchType,
+                    onChanged: (val) => setState(() {
+                      _searchType = val!;
+                      _searchResults.clear();
+                      _searchController.clear();
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            
+            SizedBox(height: 12),
+            
+            // Search input
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: _searchType == 'email' 
+                    ? 'E-posta adresi girin' 
+                    : 'Telefon numarası girin',
+                hintText: _searchType == 'email' 
+                    ? 'ornek@email.com' 
+                    : '05xx xxx xx xx',
+                border: OutlineInputBorder(),
                 suffixIcon: _isSearching
                     ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(),
                       )
-                    : null,
+                    : Icon(Icons.search),
               ),
               onChanged: (val) {
                 if (val.length > 2) _searchUser(val);
               },
-              controller: _emailController,
             ),
-            if (_searchResults.isNotEmpty)
-              ..._searchResults.map(
-                (user) => ListTile(
-                  title: Text(user.fullName),
-                  subtitle: Text(user.email),
-                  onTap: () => setState(() => _selectedUser = user),
-                  selected: _selectedUser == user,
-                  trailing: _selectedUser == user
-                      ? Icon(Icons.check, color: Colors.green)
-                      : null,
+            
+            // Search results
+            if (_searchResults.isNotEmpty) ...[
+              SizedBox(height: 16),
+              Text('Arama sonuçları:', style: Theme.of(context).textTheme.titleMedium),
+              SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: _searchResults.map(
+                    (user) => ListTile(
+                      title: Text(user.fullName),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('E-posta: ${user.email}'),
+                          if (user.phone != null && user.phone!.isNotEmpty)
+                            Text('Telefon: ${user.phone}'),
+                        ],
+                      ),
+                      onTap: () => _selectUser(user),
+                      selected: _selectedUser == user,
+                      trailing: _selectedUser == user
+                          ? Icon(Icons.check_circle, color: Colors.green)
+                          : null,
+                      tileColor: _selectedUser == user 
+                          ? Colors.green.shade50 
+                          : null,
+                    ),
+                  ).toList(),
                 ),
               ),
-            SizedBox(height: 16),
-            ElevatedButton(onPressed: _addSelector, child: Text('Ekle')),
+            ],
+            
+            // Duplicate warning display
+            if (_duplicateWarning != null) ...[
+              SizedBox(height: 16),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red[700], size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _duplicateWarning!,
+                        style: TextStyle(
+                          color: Colors.red[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _addSelector,
+                icon: Icon(Icons.person_add),
+                label: Text('Seçici Ekle'),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
           ],
         ),
       ),

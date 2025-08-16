@@ -107,6 +107,20 @@ class AuthService {
       if (additionalData['phone'] != null) {
         updateData['phone'] = additionalData['phone'];
       }
+      
+      // Handle preference fields for candidates
+      if (additionalData['preferred_age_min'] != null) {
+        updateData['preferred_age_min'] = additionalData['preferred_age_min'];
+      }
+      if (additionalData['preferred_age_max'] != null) {
+        updateData['preferred_age_max'] = additionalData['preferred_age_max'];
+      }
+      if (additionalData['preferred_cities'] != null) {
+        updateData['preferred_cities'] = additionalData['preferred_cities'];
+      }
+      if (additionalData['preferred_genders'] != null) {
+        updateData['preferred_genders'] = additionalData['preferred_genders'];
+      }
 
       if (updateData.isNotEmpty) {
         await client.from('user_profiles').update(updateData).eq('id', userId);
@@ -225,5 +239,43 @@ class AuthService {
   bool get isAuthenticated {
     final user = getCurrentUser();
     return user != null;
+  }
+
+  /// Check if email or phone number already exists
+  Future<Map<String, bool>> checkExistingEmailAndPhone({
+    required String email,
+    String? phone,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      // Check email existence
+      final emailResponse = await client
+          .from('user_profiles')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+      
+      bool emailExists = emailResponse != null;
+      bool phoneExists = false;
+      
+      // Check phone existence if phone is provided
+      if (phone != null && phone.isNotEmpty) {
+        final phoneResponse = await client
+            .from('user_profiles')
+            .select('id')
+            .eq('phone', phone)
+            .maybeSingle();
+        
+        phoneExists = phoneResponse != null;
+      }
+      
+      return {
+        'emailExists': emailExists,
+        'phoneExists': phoneExists,
+      };
+    } catch (error) {
+      throw Exception('Failed to check existing user data: $error');
+    }
   }
 }

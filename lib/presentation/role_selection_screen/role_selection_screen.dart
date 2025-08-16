@@ -61,14 +61,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
   }
 
   void _onRoleSelected(String role) {
-    // Navigate to appropriate registration screen based on role
-    if (role == 'Selector') {
-      Navigator.pushNamed(context, '/selector-registration-screen',
-          arguments: {'role': role});
-    } else {
-      Navigator.pushNamed(context, '/registration-screen',
-          arguments: {'role': role});
-    }
+    // Navigate to unified iOS-style registration screen for all roles
+    Navigator.pushNamed(context, '/registration-screen',
+        arguments: {'role': role});
   }
 
   void _showCulturalInfo() {
