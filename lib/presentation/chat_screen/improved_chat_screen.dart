@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-import 'package:provider/provider.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import '../../models/message.dart';
@@ -145,6 +145,11 @@ class _ImprovedChatScreenState extends State<ImprovedChatScreen>
 
     try {
       await _chatService.markMessagesAsRead(_conversationId!, _currentUserId!);
+      
+      // Also update SharedPreferences to clear persistent message badge
+      final prefs = await SharedPreferences.getInstance();
+      final currentUnreadCount = await _chatService.getUnreadMessageCount(_currentUserId!);
+      await prefs.setInt('lastSeenMessageCount_$_currentUserId', currentUnreadCount);
     } catch (e) {
       print('Error marking messages as read: $e');
     }
@@ -400,6 +405,7 @@ class _ImprovedChatScreenState extends State<ImprovedChatScreen>
             isMe: isMe,
             showAvatar: showAvatar,
             partnerImageUrl: widget.partnerImageUrl,
+            currentUserImageUrl: Provider.of<AuthProvider>(context, listen: false).currentUserProfile?.imageUrl,
           ),
         );
       },

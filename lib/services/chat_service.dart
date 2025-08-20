@@ -122,15 +122,36 @@ class ChatService {
   Future<void> markMessagesAsRead(String conversationId, String userId) async {
     try {
       final client = await _supabaseService.client;
-
-      await client
-          .from('messages')
-          .update(
-              {'is_read': true, 'read_at': DateTime.now().toIso8601String()})
-          .eq('conversation_id', conversationId)
-          .neq('sender_id', userId)
-          .eq('is_read', false);
+      print('🔥 CHAT_SERVICE: Marking messages as read for conversation: $conversationId, user: $userId');
+      
+      // Try to update both is_read and read_at fields, fallback to just is_read if read_at doesn't exist
+      dynamic result;
+      try {
+        result = await client
+            .from('messages')
+            .update({
+              'is_read': true,
+              'read_at': DateTime.now().toIso8601String()
+            })
+            .eq('conversation_id', conversationId)
+            .neq('sender_id', userId)
+            .eq('is_read', false);
+        print('🔥 CHAT_SERVICE: Successfully updated with read_at field');
+      } catch (readAtError) {
+        print('🔥 CHAT_SERVICE: read_at field not found, using only is_read: $readAtError');
+        // Fallback: only update is_read field
+        result = await client
+            .from('messages')
+            .update({'is_read': true})
+            .eq('conversation_id', conversationId)
+            .neq('sender_id', userId)
+            .eq('is_read', false);
+        print('🔥 CHAT_SERVICE: Successfully updated with is_read only');
+      }
+          
+      print('🔥 CHAT_SERVICE: Successfully marked messages as read. Result: $result');
     } catch (error) {
+      print('🔥 CHAT_SERVICE: Error marking messages as read: $error');
       throw Exception('Failed to mark messages as read: $error');
     }
   }
@@ -216,12 +237,14 @@ class ChatService {
       }
 
       // Batch get unread counts for all conversations
+      print('🔥 CHAT_SERVICE: Querying unread messages for conversations: $conversationIds');
       final unreadMessagesQuery = await client
           .from('messages')
-          .select('conversation_id, id')
+          .select('conversation_id, id, is_read, sender_id')
           .inFilter('conversation_id', conversationIds)
           .neq('sender_id', userId)
           .eq('is_read', false);
+      print('🔥 CHAT_SERVICE: Found ${unreadMessagesQuery.length} unread messages');
 
       // Count unread messages per conversation
       final unreadCountMap = <String, int>{};

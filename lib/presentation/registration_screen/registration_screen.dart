@@ -53,6 +53,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
   final _phoneController = TextEditingController(); // Telefon controller eklendi
   final _bioController = TextEditingController();
   final _customCityController = TextEditingController(); // Manuel şehir girişi için
+  final _citySearchController = TextEditingController(); // Location step şehir girişi için
 
   // Form state
   String _selectedRole = 'Candidate';
@@ -60,7 +61,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
   String _selectedGender = '';
   String _selectedLocation = '';
   String _selectedProfession = '';
-  String? _profileImagePath;
+  List<String> _selectedImages = [];
   List<String> _selectedInterests = [];
   bool _termsAccepted = false;
   bool _isLoading = false;
@@ -228,7 +229,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       case RegistrationStep.profession:
         return _selectedProfession.isNotEmpty;
       case RegistrationStep.profilePhoto:
-        return true; // Optional
+        return _selectedImages.length >= 3; // Minimum 3 photos required
       case RegistrationStep.bio:
         return true; // Optional
       case RegistrationStep.interests:
@@ -238,7 +239,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       case RegistrationStep.preferences:
         return _selectedRole.toLowerCase() != 'candidate' || 
                (_preferredAgeMin != null && _preferredAgeMax != null && 
-                _preferredCities.isNotEmpty && _preferredGenders.isNotEmpty);
+                _preferredGenders.isNotEmpty);
       case RegistrationStep.terms:
         return _termsAccepted;
       default:
@@ -331,8 +332,9 @@ class _RegistrationScreenState extends State<RegistrationScreen>
         additionalData['experience'] = _selectedExperience;
       }
 
-      if (_profileImagePath != null) {
-        additionalData['image_url'] = _profileImagePath;
+      if (_selectedImages.isNotEmpty) {
+        additionalData['image_urls'] = _selectedImages;
+        additionalData['image_url'] = _selectedImages.first; // Main profile image
       }
 
       final success = await authProvider.signUp(
@@ -350,11 +352,21 @@ class _RegistrationScreenState extends State<RegistrationScreen>
         
         await Future.delayed(const Duration(seconds: 2));
         
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          '/home-screen',
-          (route) => false,
-        );
+        // Navigate based on role
+        final userRole = _selectedRole.toLowerCase();
+        if (userRole == 'selector') {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRoutes.enhancedSelectorHomeScreen,
+            (route) => false,
+          );
+        } else {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRoutes.candidateHomeScreen,
+            (route) => false,
+          );
+        }
       } else if (mounted) {
         setState(() {
           _isLoading = false;
@@ -395,6 +407,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
     _phoneController.dispose();
     _bioController.dispose();
     _customCityController.dispose();
+    _citySearchController.dispose();
     _pageController.dispose();
     _fadeController.dispose();
     _slideController.dispose();
@@ -1163,33 +1176,71 @@ class _RegistrationScreenState extends State<RegistrationScreen>
         ),
         SizedBox(height: 4.h),
         
-        // Search/filter field
+        // Custom city input field
         TextField(
+          controller: _citySearchController,
           onChanged: (value) => setState(() {}),
+          onSubmitted: (value) {
+            final cityName = value.trim();
+            if (cityName.isNotEmpty) {
+              setState(() {
+                _selectedLocation = cityName;
+                _citySearchController.clear();
+              });
+              HapticFeedback.selectionClick();
+            }
+          },
           style: TextStyle(color: Colors.white, fontSize: 16.sp),
           decoration: InputDecoration(
-            hintText: 'Şehir ara...',
+            hintText: 'Şehir adı yazın ve Enter\'a basın...',
             hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-            prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+            prefixIcon: Icon(Icons.location_city, color: Colors.white.withOpacity(0.7)),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.1),
+            fillColor: Colors.blue.withOpacity(0.2),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+              borderSide: BorderSide(color: Colors.blue.withOpacity(0.5)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+              borderSide: BorderSide(color: Colors.blue.withOpacity(0.5)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white, width: 2),
+              borderSide: BorderSide(color: Colors.blue, width: 2),
             ),
             contentPadding: EdgeInsets.all(4.w),
           ),
         ),
         
         SizedBox(height: 3.h),
+        
+        // Selected city display
+        if (_selectedLocation.isNotEmpty) ...[
+          Container(
+            padding: EdgeInsets.all(3.w),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.withOpacity(0.5)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 20),
+                SizedBox(width: 2.w),
+                Text(
+                  'Seçilen şehir: $_selectedLocation',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 3.h),
+        ],
         
         Text(
           'Popüler şehirler:',
@@ -1288,32 +1339,69 @@ class _RegistrationScreenState extends State<RegistrationScreen>
         SizedBox(height: 4.h),
         
         // Manuel meslek girişi
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.3),
-              width: 1,
+        TextField(
+          style: TextStyle(color: Colors.white, fontSize: 16.sp),
+          onSubmitted: (value) {
+            setState(() {
+              _selectedProfession = value.trim();
+            });
+            HapticFeedback.selectionClick();
+          },
+          decoration: InputDecoration(
+            hintText: 'Mesleğinizi yazın ve Enter\'a basın...',
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            prefixIcon: Icon(Icons.work, color: Colors.white.withOpacity(0.7)),
+            filled: true,
+            fillColor: Colors.blue.withOpacity(0.2),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.blue.withOpacity(0.5)),
             ),
-          ),
-          child: TextField(
-            style: TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Mesleğinizi yazın...',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.blue.withOpacity(0.5)),
             ),
-            onChanged: (value) {
-              setState(() {
-                _selectedProfession = value.trim();
-              });
-            },
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.blue, width: 2),
+            ),
+            contentPadding: EdgeInsets.all(4.w),
           ),
+          onChanged: (value) {
+            setState(() {
+              _selectedProfession = value.trim();
+            });
+          },
         ),
         
         SizedBox(height: 3.h),
+        
+        // Selected profession display
+        if (_selectedProfession.isNotEmpty) ...[
+          Container(
+            padding: EdgeInsets.all(3.w),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.withOpacity(0.5)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 20),
+                SizedBox(width: 2.w),
+                Text(
+                  'Seçilen meslek: $_selectedProfession',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 3.h),
+        ],
         
         Text(
           'Veya hızlı seçim yapın:',
@@ -1383,7 +1471,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       children: [
         SizedBox(height: 6.h),
         Text(
-          'Profil fotoğrafı ekleyin',
+          'Fotoğraflarınızı ekleyin',
           style: TextStyle(
             color: Colors.white,
             fontSize: 22.sp,
@@ -1393,131 +1481,193 @@ class _RegistrationScreenState extends State<RegistrationScreen>
         ),
         SizedBox(height: 2.h),
         Text(
-          'İsteğe bağlı - daha sonra da ekleyebilirsiniz',
+          'En az 3, en fazla 6 fotoğraf eklemeniz gerekiyor',
           style: TextStyle(
             color: Colors.white.withOpacity(0.7),
             fontSize: 14.sp,
           ),
           textAlign: TextAlign.center,
         ),
-        SizedBox(height: 4.h),
-        
-        // Profile photo display
-        Center(
-          child: Container(
-            width: 40.w,
-            height: 40.w,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.1),
-              border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+        SizedBox(height: 1.h),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+          decoration: BoxDecoration(
+            color: _selectedImages.length >= 3 
+                ? Colors.green.withOpacity(0.2) 
+                : Colors.orange.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _selectedImages.length >= 3 
+                  ? Colors.green.withOpacity(0.5) 
+                  : Colors.orange.withOpacity(0.5),
             ),
-            child: _profileImagePath != null 
-                ? ClipOval(
-                    child: Image.file(
-                      File(_profileImagePath!),
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => 
-                          Icon(Icons.camera_alt, color: Colors.white, size: 48),
-                    ),
-                  )
-                : Icon(Icons.camera_alt, color: Colors.white, size: 48),
+          ),
+          child: Text(
+            '${_selectedImages.length}/6 fotoğraf seçildi ${_selectedImages.length >= 3 ? '✓' : '(en az 3 gerekli)'}',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-        
         SizedBox(height: 4.h),
         
-        // Photo selection buttons
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            // Gallery button
-            GestureDetector(
-              onTap: () => _pickImage(ImageSource.gallery),
-              child: Container(
-                padding: EdgeInsets.all(4.w),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.5)),
-                ),
-                child: Column(
-                  children: [
-                    Icon(Icons.photo_library, color: Colors.white, size: 32),
-                    SizedBox(height: 1.h),
-                    Text(
-                      'Galeriden\nSeç',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+        // Selected photos grid
+        if (_selectedImages.isNotEmpty) ...[
+          Container(
+            height: 25.h,
+            child: GridView.builder(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 2.w,
+                mainAxisSpacing: 1.h,
+                childAspectRatio: 1,
               ),
-            ),
-            
-            // Camera button
-            GestureDetector(
-              onTap: () => _pickImage(ImageSource.camera),
-              child: Container(
-                padding: EdgeInsets.all(4.w),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.5)),
-                ),
-                child: Column(
+              itemCount: _selectedImages.length,
+              itemBuilder: (context, index) {
+                return Stack(
                   children: [
-                    Icon(Icons.camera_alt, color: Colors.white, size: 32),
-                    SizedBox(height: 1.h),
-                    Text(
-                      'Kameradan\nÇek',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withOpacity(0.3)),
                       ),
-                      textAlign: TextAlign.center,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          File(_selectedImages[index]),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          errorBuilder: (context, error, stackTrace) => 
+                              Container(
+                                color: Colors.grey,
+                                child: Icon(Icons.error, color: Colors.white),
+                              ),
+                        ),
+                      ),
                     ),
+                    Positioned(
+                      top: 5,
+                      right: 5,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedImages.removeAt(index);
+                          });
+                        },
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.close, color: Colors.white, size: 16),
+                        ),
+                      ),
+                    ),
+                    if (index == 0)
+                      Positioned(
+                        bottom: 5,
+                        left: 5,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'Ana',
+                            style: TextStyle(color: Colors.white, fontSize: 10.sp),
+                          ),
+                        ),
+                      ),
                   ],
-                ),
-              ),
+                );
+              },
             ),
-          ],
-        ),
-        
-        if (_profileImagePath != null) ...[
+          ),
           SizedBox(height: 3.h),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _profileImagePath = null;
-              });
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.red.withOpacity(0.5)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.delete, color: Colors.white, size: 16),
-                  SizedBox(width: 2.w),
-                  Text(
-                    'Fotoğrafı Kaldır',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w500,
-                    ),
+        ],
+        
+        // Photo selection buttons
+        if (_selectedImages.length < 6) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // Gallery button
+              GestureDetector(
+                onTap: () => _pickImage(ImageSource.gallery),
+                child: Container(
+                  padding: EdgeInsets.all(4.w),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.5)),
                   ),
-                ],
+                  child: Column(
+                    children: [
+                      Icon(Icons.photo_library, color: Colors.white, size: 32),
+                      SizedBox(height: 1.h),
+                      Text(
+                        'Galeriden\nSeç',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Camera button
+              GestureDetector(
+                onTap: () => _pickImage(ImageSource.camera),
+                child: Container(
+                  padding: EdgeInsets.all(4.w),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.camera_alt, color: Colors.white, size: 32),
+                      SizedBox(height: 1.h),
+                      Text(
+                        'Kameradan\nÇek',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ] else ...[
+          Container(
+            padding: EdgeInsets.all(3.w),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withOpacity(0.5)),
+            ),
+            child: Text(
+              'Maksimum 6 fotoğraf ekleyebilirsiniz',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -1528,6 +1678,16 @@ class _RegistrationScreenState extends State<RegistrationScreen>
 
   Future<void> _pickImage(ImageSource source) async {
     try {
+      if (_selectedImages.length >= 6) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Maksimum 6 fotoğraf ekleyebilirsiniz'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(
         source: source,
@@ -1538,7 +1698,7 @@ class _RegistrationScreenState extends State<RegistrationScreen>
       
       if (image != null) {
         setState(() {
-          _profileImagePath = image.path;
+          _selectedImages.add(image.path);
         });
         HapticFeedback.selectionClick();
       }
@@ -1840,60 +2000,52 @@ class _RegistrationScreenState extends State<RegistrationScreen>
           style: TextStyle(color: Colors.white, fontSize: 16.sp, fontWeight: FontWeight.w600),
         ),
         SizedBox(height: 2.h),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                keyboardType: TextInputType.number,
-                style: TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Min',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+        Container(
+          padding: EdgeInsets.all(4.w),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${_preferredAgeMin ?? 18} yaş',
+                    style: TextStyle(color: Colors.white, fontSize: 14.sp, fontWeight: FontWeight.w500),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                  Text(
+                    '${_preferredAgeMax ?? 65} yaş',
+                    style: TextStyle(color: Colors.white, fontSize: 14.sp, fontWeight: FontWeight.w500),
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white),
-                  ),
-                ),
-                onChanged: (val) => setState(() => _preferredAgeMin = int.tryParse(val)),
+                ],
               ),
-            ),
-            SizedBox(width: 4.w),
-            Expanded(
-              child: TextField(
-                keyboardType: TextInputType.number,
-                style: TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Max',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white),
-                  ),
+              SizedBox(height: 2.h),
+              RangeSlider(
+                values: RangeValues(
+                  (_preferredAgeMin ?? 18).toDouble(),
+                  (_preferredAgeMax ?? 65).toDouble(),
                 ),
-                onChanged: (val) => setState(() => _preferredAgeMax = int.tryParse(val)),
+                min: 18,
+                max: 65,
+                divisions: 47,
+                activeColor: Colors.white,
+                inactiveColor: Colors.white.withOpacity(0.3),
+                labels: RangeLabels(
+                  '${_preferredAgeMin ?? 18}',
+                  '${_preferredAgeMax ?? 65}',
+                ),
+                onChanged: (RangeValues values) {
+                  setState(() {
+                    _preferredAgeMin = values.start.round();
+                    _preferredAgeMax = values.end.round();
+                  });
+                },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         
         SizedBox(height: 3.h),
@@ -1947,6 +2099,15 @@ class _RegistrationScreenState extends State<RegistrationScreen>
           'Tercih edilen şehirler',
           style: TextStyle(color: Colors.white, fontSize: 16.sp, fontWeight: FontWeight.w600),
         ),
+        SizedBox(height: 1.h),
+        Text(
+          'Adaylarınızı hangi şehirlerden seçmek istersiniz?',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.7),
+            fontSize: 12.sp,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
         SizedBox(height: 2.h),
         
         // Manual city input
@@ -1956,22 +2117,32 @@ class _RegistrationScreenState extends State<RegistrationScreen>
               child: TextField(
                 controller: _customCityController,
                 style: TextStyle(color: Colors.white),
+                onSubmitted: (value) {
+                  final cityName = value.trim();
+                  if (cityName.isNotEmpty && !_preferredCities.contains(cityName)) {
+                    setState(() {
+                      _preferredCities.add(cityName);
+                      _customCityController.clear();
+                    });
+                    HapticFeedback.selectionClick();
+                  }
+                },
                 decoration: InputDecoration(
-                  hintText: 'Şehir adı yazın...',
+                  hintText: 'Şehir adı yazın ve Enter\'a basın...',
                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
+                  fillColor: Colors.blue.withOpacity(0.2),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    borderSide: BorderSide(color: Colors.blue.withOpacity(0.5)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    borderSide: BorderSide(color: Colors.blue.withOpacity(0.5)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white),
+                    borderSide: BorderSide(color: Colors.blue),
                   ),
                 ),
               ),

@@ -65,21 +65,26 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
             SizedBox(height: 2.h),
             
             // Profile Image with Upload Functionality
-            ImagePickerWidget(
-              currentImageUrl: currentUser?.imageUrl,
-              onImageSelected: _onImageSelected,
-              userId: currentUser?.id,
-              bucketType: 'profile',
+            Container(
               width: 35.w,
               height: 35.w,
-              placeholder: 'Profil Fotoğrafı',
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+              ),
+              child: Icon(
+                Icons.person, 
+                color: Colors.grey[600], 
+                size: 20.w,
+              ),
             ),
             
             SizedBox(height: 3.h),
             
             // User Name
             Text(
-              widget.userData['fullName'] ?? 'Kullanıcı',
+              widget.userData['name'] ?? 'Kullanıcı',
               style: TextStyle(
                 fontSize: 22.sp,
                 fontWeight: FontWeight.bold,

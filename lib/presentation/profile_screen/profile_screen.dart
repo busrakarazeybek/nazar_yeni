@@ -10,6 +10,9 @@ import './widgets/personal_info_section_widget.dart';
 import './widgets/profile_header_widget.dart';
 import './widgets/role_specific_settings_widget.dart';
 import './widgets/settings_section_widget.dart';
+import './widgets/contact_info_widget.dart';
+import './widgets/preferences_widget.dart';
+import './widgets/photo_gallery_widget.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -436,53 +439,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
-    final userProfile = authProvider.currentUserProfile;
+    print("ProfileScreen build called");
+    try {
+      final authProvider = Provider.of<AuthProvider>(context);
+      final userProfile = authProvider.currentUserProfile;
+      print("AuthProvider loaded, userProfile: ${userProfile?.id}");
 
-    if (authProvider.isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (userProfile == null) {
-      return Scaffold(
-        body: Center(
-          child: Text('Kullanıcı profili bulunamadı.'),
-        ), // veya giriş ekranına yönlendir
-      );
-    }
+      if (authProvider.isLoading) {
+        print("AuthProvider is loading");
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      if (userProfile == null) {
+        print("UserProfile is null");
+        return Scaffold(
+          body: Center(
+            child: Text('Kullanıcı profili bulunamadı.'),
+          ), // veya giriş ekranına yönlendir
+        );
+      }
 
-    // userData'yı sadece boşsa initialize et
-    if (userData.isEmpty) {
-      userData = {
-        "id": userProfile.id,
-        "name": userProfile.fullName,
-        "age": userProfile.age,
-        "bio": userProfile.bio ?? '',
-        "profileImage": userProfile.imageUrl,
-        "interests": userProfile.interests ?? [],
-        // Eşleşme tercihleri - database'den çek
-        "preferredAgeMin": userProfile.preferredAgeMin,
-        "preferredAgeMax": userProfile.preferredAgeMax,
-        "preferredCities": userProfile.preferredCities ?? [],
-        "preferredInterests": userProfile.preferredInterests ?? [],
-        "preferredGenders": userProfile.preferredGenders ?? [],
-        "notificationsEnabled": true, // örnek
-        "language": "Türkçe", // örnek
-        "searchRadius": 50, // örnek
-        "privacyLevel": "Orta", // örnek
-      };
-    }
-
-    return WillPopScope(
-      onWillPop: () async {
-        if (_hasUnsavedChanges) {
-          _showUnsavedChangesDialog(() {
-            Navigator.of(context).pop();
-          });
-          return false;
+      // userData'yı sadece boşsa initialize et
+      if (userData.isEmpty) {
+        print("Initializing userData for user: ${userProfile.id}");
+        try {
+          print("DEBUG: Loading preferences from userProfile:");
+          print("DEBUG: preferredGenders from database: ${userProfile.preferredGenders}");
+          
+          userData = {
+            "id": userProfile.id,
+            "name": userProfile.fullName,
+            "age": userProfile.age,
+            "bio": userProfile.bio ?? '',
+            "profileImage": userProfile.imageUrl,
+            "interests": userProfile.interests ?? [],
+            // Kişisel bilgiler
+            "email": userProfile.email,
+            "phone": userProfile.phone ?? '',
+            "location": userProfile.location ?? '',
+            "profession": userProfile.profession ?? '',
+            "gender": userProfile.gender?.displayName ?? 'Belirtilmemiş',
+            // Fotoğraf galerisi
+            "profileImages": userProfile.imageUrls ?? [userProfile.imageUrl].where((url) => url != null).toList(),
+            // Eşleşme tercihleri - database'den çek
+            "preferredAgeMin": userProfile.preferredAgeMin,
+            "preferredAgeMax": userProfile.preferredAgeMax,
+            "preferredCities": userProfile.preferredCities ?? [],
+            "preferredInterests": userProfile.preferredInterests ?? [],
+            "preferredGenders": userProfile.preferredGenders ?? [],
+            "notificationsEnabled": true, // örnek
+            "language": "Türkçe", // örnek
+            "searchRadius": 50, // örnek
+            "privacyLevel": "Orta", // örnek
+            // ProfileHeaderWidget için gerekli alanlar
+            "role": userProfile.role.toString().split('.').last,
+            "matchCount": 0, // Gerçek değer gerekirse service'den çekilebilir
+            "photoCount": (userProfile.imageUrls?.length ?? 0),
+            "rating": 5.0, // Gerçek değer gerekirse service'den çekilebilir
+          };
+          
+          print("DEBUG: userData preferredGenders after initialization: ${userData["preferredGenders"]}");
+          print("userData initialized successfully");
+        } catch (e) {
+          print("Error initializing userData: $e");
+          return Scaffold(
+            body: Center(
+              child: Text('Profil verileri hazırlanamadı: $e'),
+            ),
+          );
         }
-        return true;
-      },
-      child: Scaffold(
+      }
+
+      return WillPopScope(
+        onWillPop: () async {
+          if (_hasUnsavedChanges) {
+            _showUnsavedChangesDialog(() {
+              Navigator.of(context).pop();
+            });
+            return false;
+          }
+          return true;
+        },
+        child: Scaffold(
         backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(
@@ -518,16 +555,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
           physics: const BouncingScrollPhysics(),
           child: Column(
             children: [
-              ProfileHeaderWidget(
-                userData: userData,
-                onImageChanged: _onDataChanged,
+              Builder(
+                builder: (context) {
+                  try {
+                    print("Building ProfileHeaderWidget with userData keys: ${userData.keys}");
+                    return ProfileHeaderWidget(
+                      userData: userData,
+                      onImageChanged: _onDataChanged,
+                    );
+                  } catch (e) {
+                    print("Error building ProfileHeaderWidget: $e");
+                    return Container(
+                      height: 200,
+                      color: Colors.red,
+                      child: Center(
+                        child: Text('Header Error: $e', style: TextStyle(color: Colors.white)),
+                      ),
+                    );
+                  }
+                },
               ),
               SizedBox(height: 2.h),
+              
+              // Photo Gallery - Temporarily Removed
+              Container(
+                height: 100,
+                color: Colors.grey[200],
+                child: Center(
+                  child: Text('Fotoğraf galerisi geçici olarak devre dışı'),
+                ),
+              ),
+              SizedBox(height: 2.h),
+              
               PersonalInfoSectionWidget(
                 userData: userData,
                 onDataChanged: _onDataChanged,
               ),
               SizedBox(height: 2.h),
+              
+              // Contact Information
+              ContactInfoWidget(
+                userData: userData,
+                onDataChanged: _onDataChanged,
+              ),
+              SizedBox(height: 2.h),
+              
               InterestsSectionWidget(
                 interests: (userData["interests"] as List).cast<String>(),
                 popularInterests: _popularInterests,
@@ -539,6 +611,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 },
               ),
               SizedBox(height: 2.h),
+              
+              // Preferences (only for candidates)
+              if (userProfile.role == UserRole.candidate) ...[
+                PreferencesWidget(
+                  userData: userData,
+                  onDataChanged: _onDataChanged,
+                ),
+                SizedBox(height: 2.h),
+              ],
+              
               RoleSpecificSettingsWidget(
                 userRole: userProfile.role.toString().split('.').last,
                 userData: userData,
@@ -588,7 +670,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
               )
             : null,
-      ),
-    );
+        ),
+      );
+    } catch (e, stackTrace) {
+      print("Error in ProfileScreen build: $e");
+      print("StackTrace: $stackTrace");
+      return Scaffold(
+        body: Center(
+          child: Text('Profil yüklenemedi: $e'),
+        ),
+      );
+    }
   }
 }

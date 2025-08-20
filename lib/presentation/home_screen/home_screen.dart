@@ -66,13 +66,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return _buildNoProfileScreen();
     }
 
-    // Rol bazlı ekran seçimi - CandidateHomeScreen kullan
+    // Rol bazlı ekran seçimi - proper screens kullan
     switch (_currentUserProfile!.role) {
       case UserRole.selector:
-        return SelectorHomeWidget(userProfile: _currentUserProfile!);
+        // EnhancedSelectorHomeScreen kullan
+        Navigator.pushReplacementNamed(context, AppRoutes.enhancedSelectorHomeScreen);
+        return _buildLoadingScreen();
       case UserRole.candidate:
-        // CandidateHomeScreen kullan, CandidateHomeWidget değil
-        Navigator.pushReplacementNamed(context, '/candidate-home-screen');
+        // CandidateHomeScreen kullan
+        Navigator.pushReplacementNamed(context, AppRoutes.candidateHomeScreen);
         return _buildLoadingScreen();
       case UserRole.admin:
         return SelectorHomeWidget(userProfile: _currentUserProfile!);

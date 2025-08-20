@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_export.dart';
 import '../../models/match_proposal.dart';
 import '../../services/match_proposal_service.dart';
+import '../../services/chat_service.dart';
 import '../../widgets/match_celebration_dialog.dart';
 import './widgets/suggested_candidates_section_widget.dart';
 
@@ -24,9 +25,11 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   UserProfile? _selectedSelector;
   String? _errorMessage;
   late TabController _tabController;
+  int _unreadMessageCount = 0;
   int _newMatchesCount = 0;
   late AnimationController _selectionAnimationController;
   late Animation<double> _selectionAnimation;
+  Map<String, bool> _viewedSelectors = {};
 
   @override
   void initState() {
@@ -57,6 +60,26 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     super.dispose();
   }
 
+  // Create special "Görücü" profile
+  UserProfile _createGorocuProfile() {
+    return UserProfile(
+      id: 'gorocu_profile_special',
+      fullName: 'Görücü',
+      email: 'gorocu@app.com',
+      role: UserRole.selector,
+      isActive: true,
+      imageUrl: null, // Will use app logo
+      bio: 'Uygulamadaki diğer görücülerden gelen öneriler',
+      age: 0,
+      gender: GenderType.other,
+      location: '',
+      interests: [],
+      profession: 'Görücü Sistemi',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+  }
+
   Future<void> _loadData() async {
     try {
       setState(() {
@@ -80,49 +103,52 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
         currentUser.id,
       );
 
-      // Extract unique selectors from proposals
-      final selectorIds = proposals.map((p) => p.selectorId).toSet().toList();
-
+      // Get candidate's actual selectors (those added by the candidate)
       final userService = UserService();
+      final candidateSelectors = await userService.getCandidateSelectors(currentUser.id);
+      final candidateSelectorIds = candidateSelectors.map((s) => s.id).toSet();
+
+      // Extract unique selectors from proposals who are the candidate's own selectors
+      final proposalSelectorIds = proposals.map((p) => p.selectorId).toSet().toList();
       final selectors = <UserProfile>[];
 
-      for (final selectorId in selectorIds) {
-        try {
-          final selector = await userService.getUserProfile(selectorId);
-          if (selector != null) {
-            selectors.add(selector);
+      for (final selectorId in proposalSelectorIds) {
+        // Only include selectors that were added by the candidate
+        if (candidateSelectorIds.contains(selectorId)) {
+          try {
+            final selector = await userService.getUserProfile(selectorId);
+            if (selector != null) {
+              selectors.add(selector);
+            }
+          } catch (e) {
+            print('Error loading selector $selectorId: $e');
           }
-        } catch (e) {
-          print('Error loading selector $selectorId: $e');
         }
       }
 
-      // Yeni eşleşmeleri say
-      final matchedProposals = proposals.where((p) => 
-        p.status == AcceptanceStatus.accepted && 
-        p.targetStatus == AcceptanceStatus.accepted
-      ).toList();
+      // Always add the special "Görücü" profile at the beginning
+      final gorocuProfile = _createGorocuProfile();
+      selectors.insert(0, gorocuProfile);
+
+      // Load data without badge-related processing since we use message count now
       
-      // SharedPreferences ile badge durumunu kontrol et
-      final prefs = await SharedPreferences.getInstance();
-      final hasViewedMatches = prefs.getBool('hasViewedMatches_${currentUser.id}') ?? false;
+      // Load viewed selectors state first before setting state
+      _proposals = proposals;
+      _selectors = selectors;
+      await _loadViewedSelectorsState();
       
       setState(() {
-        _proposals = proposals;
-        _selectors = selectors;
-        
-        // Badge'i sadece görüntülenmediyse göster
-        if (!hasViewedMatches) {
-          _newMatchesCount = matchedProposals.length;
-        } else {
-          _newMatchesCount = 0;
-        }
-        
-        // Auto-select first selector if available
+        // Auto-select Görücü profile (first selector) if available
         if (_selectors.isNotEmpty && _selectedSelector == null) {
-          _selectedSelector = _selectors.first;
+          _selectedSelector = _selectors.first; // This will be the Görücü profile
         }
       });
+
+      // Load unread message count separately
+      await _loadUnreadMessageCount();
+      
+      // Load matches count separately
+      await _loadMatchesCount();
     } catch (e) {
       setState(() {
         _errorMessage = 'Veriler yüklenirken hata oluştu: $e';
@@ -134,21 +160,102 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     }
   }
 
-  Future<void> _markMatchesAsViewed() async {
+  Future<void> _loadUnreadMessageCount() async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUserProfile;
       
       if (currentUser != null) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('hasViewedMatches_${currentUser.id}', true);
+        final lastSeenMessageCount = prefs.getInt('lastSeenMessageCount_${currentUser.id}') ?? 0;
+        
+        final chatService = ChatService();
+        final currentUnreadCount = await chatService.getUnreadMessageCount(currentUser.id);
+        
+        // Show badge only if there are new messages since last seen
+        final newMessagesCount = currentUnreadCount - lastSeenMessageCount;
+        
+        setState(() {
+          _unreadMessageCount = newMessagesCount > 0 ? newMessagesCount : 0;
+        });
+      }
+    } catch (e) {
+      print('Error loading unread message count: $e');
+    }
+  }
+
+  Future<void> _clearMessageBadge() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final chatService = ChatService();
+        final currentUnreadCount = await chatService.getUnreadMessageCount(currentUser.id);
+        
+        // Save current message count as last seen
+        await prefs.setInt('lastSeenMessageCount_${currentUser.id}', currentUnreadCount);
+        
+        setState(() {
+          _unreadMessageCount = 0;
+        });
+      }
+    } catch (e) {
+      print('Error clearing message badge: $e');
+    }
+  }
+
+  Future<void> _loadMatchesCount() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final lastSeenMatchCount = prefs.getInt('lastSeenMatchCount_${currentUser.id}') ?? 0;
+        
+        // Count current matches (accepted by both parties)
+        final currentMatches = _proposals.where((p) => 
+          p.status == AcceptanceStatus.accepted && 
+          p.targetStatus == AcceptanceStatus.accepted &&
+          (p.candidateId == currentUser.id || p.targetCandidateId == currentUser.id)
+        ).length;
+        
+        final newMatches = currentMatches - lastSeenMatchCount;
+        
+        setState(() {
+          _newMatchesCount = newMatches > 0 ? newMatches : 0;
+        });
+      }
+    } catch (e) {
+      print('Error loading matches count: $e');
+    }
+  }
+
+  Future<void> _clearMatchesBadge() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        
+        // Count current matches and save as last seen
+        final currentMatches = _proposals.where((p) => 
+          p.status == AcceptanceStatus.accepted && 
+          p.targetStatus == AcceptanceStatus.accepted &&
+          (p.candidateId == currentUser.id || p.targetCandidateId == currentUser.id)
+        ).length;
+        
+        await prefs.setInt('lastSeenMatchCount_${currentUser.id}', currentMatches);
         
         setState(() {
           _newMatchesCount = 0;
         });
       }
     } catch (e) {
-      print('Error marking matches as viewed: $e');
+      print('Error clearing matches badge: $e');
     }
   }
 
@@ -158,6 +265,11 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUser = authProvider.currentUserProfile;
     if (currentUser == null) return [];
+    
+    // Special handling for Görücü profile
+    if (_selectedSelector!.id == 'gorocu_profile_special') {
+      return _getGorocuProposals(currentUser.id);
+    }
     
     return _proposals
         .where(
@@ -173,6 +285,39 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               // Current user is the first candidate - only show if they haven't responded
               return p.status == AcceptanceStatus.pending;
             } else if (p.targetCandidateId == currentUser.id) {
+              // Current user is the target candidate - only show if they haven't responded
+              return p.targetStatus == AcceptanceStatus.pending;
+            }
+            
+            // Current user is not part of this proposal
+            return false;
+          },
+        )
+        .toList();
+  }
+
+  // Get proposals from selectors who are not in candidate's selector list (Görücü)
+  List<MatchProposal> _getGorocuProposals(String candidateId) {
+    // Get candidate's actual selector IDs (those they added)
+    final candidateSelectorIds = _selectors
+        .where((s) => s.id != 'gorocu_profile_special')
+        .map((s) => s.id)
+        .toSet();
+
+    return _proposals
+        .where(
+          (p) {
+            // Only show proposals from selectors who are NOT in candidate's selector list
+            if (candidateSelectorIds.contains(p.selectorId)) return false;
+            
+            // Don't show if selector has rejected the proposal
+            if (p.selectorStatus == AcceptanceStatus.rejected) return false;
+            
+            // Determine if current user is the candidate or target candidate
+            if (p.candidateId == candidateId) {
+              // Current user is the first candidate - only show if they haven't responded
+              return p.status == AcceptanceStatus.pending;
+            } else if (p.targetCandidateId == candidateId) {
               // Current user is the target candidate - only show if they haven't responded
               return p.targetStatus == AcceptanceStatus.pending;
             }
@@ -250,6 +395,9 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       
       // Loading dialog'ı kapat
       Navigator.of(context).pop();
+      
+      // Sayfayı yeniden yükle ve seçici listesini güncelle
+      await _loadData();
       
       // Başarı mesajı göster
       ScaffoldMessenger.of(context).showSnackBar(
@@ -659,25 +807,478 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       padding: EdgeInsets.all(4.w),
       children: [
         if (currentUser != null) _buildIncomingRequestsSection(currentUser.id),
-        // Only show empty screen if not loading AND selectors are actually empty
-        if (!_isLoading && _selectors.isEmpty)
-          _buildEmptySelectorsScreen()
-        else if (!_isLoading && _selectors.isNotEmpty) ...[
+        // Always show selectors section (Görücü profile is always added)
+        if (!_isLoading) ...[
           // My Selectors Section with responsive layout
           _buildMySelectorsSection(),
           SizedBox(height: 3.h),
-          // Suggested Candidates Section
-          SuggestedCandidatesSection(
-            proposals: _filteredProposals,
-            selectedSelector: _selectedSelector,
-            onAcceptProposal: _acceptProposal,
-            onRejectProposal: _rejectProposal,
-            onViewProfile: _viewCandidateProfile,
-            currentUser: currentUser!,
-          ),
+          // Suggested Candidates Section or Görücü Explanation
+          _selectedSelector?.id == 'gorocu_profile_special'
+              ? _buildGorocuExplanationSection()
+              : _buildRegularSelectorSection(),
         ],
       ],
     );
+  }
+
+  // Check if there are any proposals from any selector
+  bool _hasAnyProposals() {
+    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    if (currentUser == null) return false;
+    
+    // Check both regular selectors and Görücü proposals
+    final regularProposals = _selectors
+        .where((s) => s.id != 'gorocu_profile_special')
+        .any((selector) => _proposals.any((p) => 
+            p.selectorId == selector.id && 
+            p.selectorStatus != AcceptanceStatus.rejected &&
+            ((p.candidateId == currentUser.id && p.status == AcceptanceStatus.pending) ||
+             (p.targetCandidateId == currentUser.id && p.targetStatus == AcceptanceStatus.pending))));
+    
+    final gorocuProposals = _getGorocuProposals(currentUser.id).isNotEmpty;
+    
+    return regularProposals || gorocuProposals;
+  }
+
+  Widget _buildRegularSelectorSection() {
+    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    if (currentUser == null) return Container();
+    
+    // Check if there are any proposals for this specific selector
+    final selectorProposals = _filteredProposals;
+    
+    if (_hasAnyProposals()) {
+      // Show candidate cards when there are proposals
+      return SuggestedCandidatesSection(
+        proposals: selectorProposals,
+        selectedSelector: _selectedSelector,
+        onAcceptProposal: _acceptProposal,
+        onRejectProposal: _rejectProposal,
+        onViewProfile: _viewCandidateProfile,
+        currentUser: currentUser,
+      );
+    } else {
+      // Show info screen when no proposals exist anywhere
+      return Container(
+        padding: EdgeInsets.all(3.w),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.grey[600]),
+                SizedBox(width: 2.w),
+                Expanded(
+                  child: Text(
+                    'Henüz hiçbir seçiciden aday önerisi gelmemiş. Seçiciler aktif oldukça öneriler burada görünecek.',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 2.h),
+            Container(
+              padding: EdgeInsets.all(2.w),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lightbulb, color: Colors.green[700], size: 5.w),
+                  SizedBox(width: 2.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '💡 İpucu',
+                          style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                        SizedBox(height: 0.5.h),
+                        Text(
+                          'Kendi seçicilerini ekleyerek daha hızlı öneriler alabilirsin! Yukarıdaki "Seçici Ekle" butonunu kullan.',
+                          style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                            color: Colors.green[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Widget _buildGorocuExplanationSection() {
+    final gorocuProposals = _filteredProposals;
+    
+    return Container(
+      padding: EdgeInsets.all(4.w),
+      decoration: BoxDecoration(
+        color: AppTheme.lightTheme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.lightTheme.colorScheme.outline.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Only show explanations if there are no proposals
+          if (gorocuProposals.isEmpty) ...[
+            // Header with icon
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(3.w),
+                  decoration: BoxDecoration(
+                    color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.visibility,
+                    color: AppTheme.lightTheme.primaryColor,
+                    size: 6.w,
+                  ),
+                ),
+                SizedBox(width: 3.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Görücü Sistemi',
+                        style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.lightTheme.primaryColor,
+                        ),
+                      ),
+                      Text(
+                        'Uygulamadaki diğer görücülerden öneriler',
+                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 3.h),
+            
+            // Explanation
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.primaryColor.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '💡 Görücü Nedir?',
+                    style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 1.h),
+                  Text(
+                    'Görücü, geleneksel evlilik kültürümüzde sizin için uygun eş adayı arayan ve öneren güvenilir kişilerdir. Bu bölümde kendi seçtiğiniz görücüler dışındaki tüm görücülerden gelen öneriler görüntülenir.',
+                    style: AppTheme.lightTheme.textTheme.bodyMedium,
+                  ),
+                  SizedBox(height: 2.h),
+                  Container(
+                    padding: EdgeInsets.all(2.w),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_add, color: Colors.blue[700], size: 5.w),
+                        SizedBox(width: 2.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Kendi Görücünü Ekleyebilirsin!',
+                                style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue[700],
+                                ),
+                              ),
+                              SizedBox(height: 0.5.h),
+                              Text(
+                                'Yukarıdaki "Ekle" butonunu kullanarak aile üyelerini, yakın arkadaşlarını veya güvendiğin kişileri kendi görücün olarak ekleyebilirsin.',
+                                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.blue[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 2.h),
+            
+            // Step by step guide
+            Text(
+              '📋 Nasıl Çalışır?',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            
+            ..._buildStepByStepGuide(),
+            
+            SizedBox(height: 3.h),
+          ],
+          
+          // Show proposals or info screen based on Görücü proposals availability
+          if (gorocuProposals.isNotEmpty) ...[
+            // Current proposals for Görücü section - ONLY show the proposals, no explanations
+            Text(
+              '💌 Mevcut Öneriler (${gorocuProposals.length})',
+              style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            SuggestedCandidatesSection(
+              proposals: gorocuProposals,
+              selectedSelector: _selectedSelector,
+              onAcceptProposal: _acceptProposal,
+              onRejectProposal: _rejectProposal,
+              onViewProfile: _viewCandidateProfile,
+              currentUser: Provider.of<AuthProvider>(context, listen: false).currentUserProfile!,
+            ),
+          ] else if (!_hasAnyProposals()) ...[
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.grey[600]),
+                      SizedBox(width: 2.w),
+                      Expanded(
+                        child: Text(
+                          'Henüz diğer görücülerden öneri gelmemiş. Uygulamada daha fazla görücü aktif oldukça burada öneriler görünecek.',
+                          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 2.h),
+                  Container(
+                    padding: EdgeInsets.all(2.w),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lightbulb, color: Colors.green[700], size: 5.w),
+                        SizedBox(width: 2.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '💡 İpucu',
+                                style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green[700],
+                                ),
+                              ),
+                              SizedBox(height: 0.5.h),
+                              Text(
+                                'Kendi görücülerini ekleyerek daha hızlı ve güvenilir öneriler alabilirsin! Yukarıdaki "Ekle" butonunu kullan.',
+                                style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.green[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          // Additional tip section
+          SizedBox(height: 2.h),
+          Container(
+            padding: EdgeInsets.all(3.w),
+            decoration: BoxDecoration(
+              color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.lightTheme.primaryColor.withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(2.w),
+                  decoration: BoxDecoration(
+                    color: AppTheme.lightTheme.primaryColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.stars,
+                    color: Colors.white,
+                    size: 5.w,
+                  ),
+                ),
+                SizedBox(width: 3.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'En İyi Deneyim İçin',
+                        style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.lightTheme.primaryColor,
+                        ),
+                      ),
+                      SizedBox(height: 0.5.h),
+                      Text(
+                        'Hem kendi görücülerini ekle hem de buradaki genel önerileri takip et. Böylece daha fazla uygun eş adayı ile tanışabilirsin.',
+                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildStepByStepGuide() {
+    final steps = [
+      {
+        'icon': Icons.person_add,
+        'title': '1. Kendi Görücülerin',
+        'description': 'Yukarıdaki "Ekle" butonu ile aile üyelerin ve güvendiğin kişileri kendi görücün olarak ekleyebilirsin.',
+      },
+      {
+        'icon': Icons.search,
+        'title': '2. Aday Keşfi',
+        'description': 'Hem kendi görücülerin hem de uygulamadaki diğer görücüler sizin profilinizi görür ve uygun adayları önerir.',
+      },
+      {
+        'icon': Icons.favorite,
+        'title': '3. Öneri Gelir',
+        'description': 'Kendi görücülerinden gelen öneriler diğer sekmelerde, uygulamadaki genel öneriler burada listelenir.',
+      },
+      {
+        'icon': Icons.visibility,
+        'title': '4. İnceleme',
+        'description': 'Önerilen adayların profillerini inceleyebilir, fotoğraflarını görebilirsiniz.',
+      },
+      {
+        'icon': Icons.thumb_up,
+        'title': '5. Karar Verme',
+        'description': 'Beğendiğiniz önerileri kabul edebilir veya reddedebilirsiniz.',
+      },
+      {
+        'icon': Icons.chat,
+        'title': '6. Eşleşme',
+        'description': 'Karşılıklı kabul durumunda eşleşme gerçekleşir ve mesajlaşabilirsiniz.',
+      },
+    ];
+
+    return steps.map((step) {
+      return Container(
+        margin: EdgeInsets.only(bottom: 1.5.h),
+        padding: EdgeInsets.all(2.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(2.w),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                step['icon'] as IconData,
+                color: AppTheme.lightTheme.primaryColor,
+                size: 5.w,
+              ),
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    step['title'] as String,
+                    style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    step['description'] as String,
+                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
   }
 
   Widget _buildMySelectorsSection() {
@@ -741,51 +1342,55 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildAddSelectorButton() {
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.lightTheme.primaryColor,
-            AppTheme.lightTheme.primaryColor.withAlpha(200),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.lightTheme.primaryColor.withAlpha(51),
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            print('🔥 Görücü Ekle butonu CLICKED!');
-            _handleAddSelector();
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.person_add_rounded, color: Colors.white, size: 3.w),
-                SizedBox(width: 1.w),
-                Text(
-                  'Ekle',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 10.sp,
-                  ),
+      height: 8.h,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GestureDetector(
+            onTap: () {
+              print('🔥 Görücü Ekle butonu CLICKED!');
+              _handleAddSelector();
+            },
+            child: Container(
+              width: 20.w,
+              height: 5.h,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.6),
+                  width: 2,
+                  style: BorderStyle.solid,
                 ),
-              ],
+                color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.person_add_rounded,
+                    color: AppTheme.lightTheme.primaryColor,
+                    size: 18,
+                  ),
+                  SizedBox(width: 1.w),
+                  Text(
+                    'Seçici Ekle',
+                    style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.lightTheme.primaryColor,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -931,6 +1536,28 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   }
 
   Widget _buildDefaultSelectorAvatar(UserProfile selector, bool isSelected) {
+    // Special handling for Görücü profile
+    if (selector.id == 'gorocu_profile_special') {
+      return Container(
+        width: isSelected ? 12.w : 10.w,
+        height: isSelected ? 12.w : 10.w,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.lightTheme.primaryColor.withOpacity(0.9),
+              AppTheme.accentColor.withOpacity(0.9),
+            ],
+          ),
+        ),
+        child: Icon(
+          Icons.visibility,
+          color: Colors.white,
+          size: isSelected ? 4.w : 3.w,
+        ),
+      );
+    }
+
     return Container(
       width: isSelected ? 12.w : 10.w,
       height: isSelected ? 12.w : 10.w,
@@ -1096,9 +1723,59 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       _selectedSelector = selector;
     });
 
+    // Clear notification badge for this selector
+    _clearSelectorNotifications(selector.id);
+
     _selectionAnimationController.reset();
     _selectionAnimationController.forward();
     HapticFeedback.selectionClick();
+  }
+
+  Future<void> _loadViewedSelectorsState() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final viewedState = <String, bool>{};
+        
+        for (final selector in _selectors) {
+          viewedState[selector.id] = prefs.getBool('hasViewedSelector_${currentUser.id}_${selector.id}') ?? false;
+        }
+        
+        setState(() {
+          _viewedSelectors = viewedState;
+        });
+      }
+    } catch (e) {
+      print('Error loading viewed selectors state: $e');
+    }
+  }
+
+  Future<void> _clearSelectorNotifications(String selectorId) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasViewedSelector_${currentUser.id}_$selectorId', true);
+        
+        // Store current proposal count as last seen count
+        final currentCount = _proposals
+            .where((p) => p.selectorId == selectorId)
+            .length;
+        await prefs.setInt('lastSeenProposalCount_${currentUser.id}_$selectorId', currentCount);
+        
+        // Update local state
+        setState(() {
+          _viewedSelectors[selectorId] = true;
+        });
+      }
+    } catch (e) {
+      print('Error clearing selector notifications: $e');
+    }
   }
 
   void _handleAddSelector() async {
@@ -1758,13 +2435,30 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Map<String, int> _getPendingCountsForSelectors() {
     final counts = <String, int>{};
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUserProfile;
+    
     for (final selector in _selectors) {
-      final pendingCount = _proposals
-          .where((p) => p.selectorId == selector.id && p.isPending)
-          .length;
-      counts[selector.id] = pendingCount;
+      if (selector.id == 'gorocu_profile_special') {
+        // Count proposals from non-selected selectors for Görücü profile
+        final gorocuProposals = currentUser != null ? _getGorocuProposals(currentUser.id) : <MatchProposal>[];
+        counts[selector.id] = _getUnviewedCount(selector.id, gorocuProposals.length);
+      } else {
+        final totalProposalCount = _proposals
+            .where((p) => p.selectorId == selector.id)
+            .length;
+        counts[selector.id] = _getUnviewedCount(selector.id, totalProposalCount);
+      }
     }
     return counts;
+  }
+
+  int _getUnviewedCount(String selectorId, int totalCount) {
+    if (totalCount == 0) return 0;
+    
+    // If selector has been viewed, don't show badge
+    final hasBeenViewed = _viewedSelectors[selectorId] ?? false;
+    return hasBeenViewed ? 0 : totalCount;
   }
 
   Future<void> _acceptProposal(MatchProposal proposal) async {
@@ -1875,15 +2569,16 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
             // Already on home screen
             break;
           case 1:
-            // Badge'i kalıcı olarak sıfırla ve matches screen'e git
-            _markMatchesAsViewed();
-            Navigator.pushNamed(context, '/matches-screen');
+            // Clear both matches and message badges and navigate to matches screen
+            _clearMatchesBadge();
+            _clearMessageBadge();
+            Navigator.pushReplacementNamed(context, '/matches-screen');
             break;
           case 2:
-            Navigator.pushNamed(context, '/my-selectors-screen');
+            Navigator.pushReplacementNamed(context, '/my-selectors-screen');
             break;
           case 3:
-            Navigator.pushNamed(context, '/profile-screen');
+            Navigator.pushReplacementNamed(context, '/profile-screen');
             break;
         }
       },
@@ -1904,7 +2599,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           icon: Stack(
             children: [
               CustomIconWidget(
-                iconName: 'chat',
+                iconName: 'favorite',
                 color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                 size: 24,
               ),

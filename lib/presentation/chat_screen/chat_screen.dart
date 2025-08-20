@@ -562,6 +562,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 isMe: isMe,
                                 showAvatar: true,
                                 partnerImageUrl: _matchPartner?['profileImage'],
+                                currentUserImageUrl: Provider.of<AuthProvider>(context, listen: false).currentUserProfile?.imageUrl,
                                 onLongPress: () {},
                               );
                             },
@@ -570,52 +571,53 @@ class _ChatScreenState extends State<ChatScreen> {
                       },
                     ),
             ),
-            // Typing Indicator
-            if (_isTyping)
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 12.w,
-                      height: 12.w,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppTheme.lightTheme.colorScheme.outline
-                            .withValues(alpha: 0.3),
-                      ),
-                      child: Center(
-                        child: SizedBox(
-                          width: 4.w,
-                          height: 4.w,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppTheme.lightTheme.colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 2.w),
-                    Text(
-                      'yazıyor...',
-                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            // Typing Indicator - Disabled for now since it needs real-time implementation
+            // if (_isTyping)
+            //   Container(
+            //     padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+            //     child: Row(
+            //       children: [
+            //         Container(
+            //           width: 12.w,
+            //           height: 12.w,
+            //           decoration: BoxDecoration(
+            //             shape: BoxShape.circle,
+            //             color: AppTheme.lightTheme.colorScheme.outline
+            //                 .withValues(alpha: 0.3),
+            //           ),
+            //           child: Center(
+            //             child: SizedBox(
+            //               width: 4.w,
+            //               height: 4.w,
+            //               child: CircularProgressIndicator(
+            //                 strokeWidth: 2,
+            //                 valueColor: AlwaysStoppedAnimation<Color>(
+            //                   AppTheme.lightTheme.colorScheme.primary,
+            //                 ),
+            //               ),
+            //             ),
+            //           ),
+            //         ),
+            //         SizedBox(width: 2.w),
+            //         Text(
+            //           'yazıyor...',
+            //           style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+            //             fontStyle: FontStyle.italic,
+            //           ),
+            //         ),
+            //       ],
+            //     ),
+            //   ),
             // Chat Input
             ChatInputWidget(
               controller: _messageController,
               focusNode: _messageFocusNode,
               onSend: _sendMessage,
               onTypingChanged: (isTyping) {
-                setState(() {
-                  _isTyping = isTyping;
-                });
+                // Disabled typing indicator for now
+                // setState(() {
+                //   _isTyping = isTyping;
+                // });
               },
             ),
           ],

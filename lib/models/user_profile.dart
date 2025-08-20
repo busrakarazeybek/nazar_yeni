@@ -2,6 +2,21 @@ enum UserRole { candidate, selector, admin }
 
 enum GenderType { male, female, other, preferNotToSay }
 
+extension GenderTypeExtension on GenderType {
+  String get displayName {
+    switch (this) {
+      case GenderType.male:
+        return 'Erkek';
+      case GenderType.female:
+        return 'Kadın';
+      case GenderType.other:
+        return 'Diğer';
+      case GenderType.preferNotToSay:
+        return 'Belirtmek İstemiyorum';
+    }
+  }
+}
+
 class UserProfile {
   final String id;
   final String email;
@@ -14,6 +29,7 @@ class UserProfile {
   final String? location;
   final String? profession;
   final String? imageUrl;
+  final List<String>? imageUrls;
   final String? phone;
   final bool isActive;
   final bool isVerified;
@@ -37,6 +53,7 @@ class UserProfile {
     this.location,
     this.profession,
     this.imageUrl,
+    this.imageUrls,
     this.phone,
     this.isActive = true,
     this.isVerified = false,
@@ -64,6 +81,9 @@ class UserProfile {
       location: json['location'] as String?,
       profession: json['profession'] as String?,
       imageUrl: json['image_url'] as String?,
+      imageUrls: json['image_urls'] != null
+          ? List<String>.from(json['image_urls'] as List)
+          : null,
       phone: json['phone'] as String?,
       isActive: json['is_active'] as bool? ?? true,
       isVerified: json['is_verified'] as bool? ?? false,
@@ -98,6 +118,7 @@ class UserProfile {
       'location': location,
       'profession': profession,
       'image_url': imageUrl,
+      'image_urls': imageUrls,
       'phone': phone,
       'is_active': isActive,
       'is_verified': isVerified,

@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../services/chat_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MatchesScreen extends StatefulWidget {
   const MatchesScreen({super.key});
@@ -17,14 +18,91 @@ class _MatchesScreenState extends State<MatchesScreen> {
   String? _errorMessage;
   final ChatService _chatService = ChatService();
 
+  Set<String> _viewedConversations = {}; // Track locally viewed conversations
+
   @override
   void initState() {
     super.initState();
+    _loadViewedConversations();
     _loadMatches();
+    _clearMessageBadgeInOtherScreens();
+  }
+
+  Future<void> _loadViewedConversations() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final viewedList = prefs.getStringList('viewedConversations_${currentUser.id}') ?? [];
+        _viewedConversations = viewedList.toSet();
+        print('🔥 MATCHES: Loaded ${_viewedConversations.length} viewed conversations from SharedPreferences');
+      }
+    } catch (e) {
+      print('🔥 MATCHES: Error loading viewed conversations: $e');
+    }
+  }
+
+  Future<void> _saveViewedConversations() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList('viewedConversations_${currentUser.id}', _viewedConversations.toList());
+        print('🔥 MATCHES: Saved ${_viewedConversations.length} viewed conversations to SharedPreferences');
+      }
+    } catch (e) {
+      print('🔥 MATCHES: Error saving viewed conversations: $e');
+    }
+  }
+
+  void _updateViewedConversationsForNewMessages(List<Map<String, dynamic>> conversations) {
+    // Remove viewed status from conversations that now have unread messages
+    // This ensures that new messages will show badges even if previously viewed
+    final conversationsWithNewMessages = <String>{};
+    
+    for (final conversation in conversations) {
+      final conversationId = conversation['conversation_id'] as String;
+      final unreadCount = conversation['unread_count'] as int;
+      
+      // If conversation has unread messages and was previously viewed, remove viewed status
+      if (unreadCount > 0 && _viewedConversations.contains(conversationId)) {
+        conversationsWithNewMessages.add(conversationId);
+      }
+    }
+    
+    if (conversationsWithNewMessages.isNotEmpty) {
+      _viewedConversations.removeAll(conversationsWithNewMessages);
+      _saveViewedConversations(); // Save updated state
+      print('🔥 MATCHES: Removed viewed status from ${conversationsWithNewMessages.length} conversations with new messages');
+    }
+  }
+
+  Future<void> _clearMessageBadgeInOtherScreens() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasViewedMessages_${currentUser.id}', true);
+        
+        // Also clear the unread message count for persistent badge clearing
+        final chatService = ChatService();
+        final currentUnreadCount = await chatService.getUnreadMessageCount(currentUser.id);
+        await prefs.setInt('lastSeenMessageCount_${currentUser.id}', currentUnreadCount);
+      }
+    } catch (e) {
+      print('Error clearing message badge: $e');
+    }
   }
 
   Future<void> _loadMatches() async {
     try {
+      print('🔥 MATCHES: _loadMatches called, current conversations count: ${_conversations.length}');
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -40,12 +118,24 @@ class _MatchesScreenState extends State<MatchesScreen> {
         return;
       }
 
+      print('🔥 MATCHES: Fetching conversations from ChatService...');
       final conversations = await _chatService.getConversations(currentUser.id);
+      print('🔥 MATCHES: Received ${conversations.length} conversations');
+      
+      for (int i = 0; i < conversations.length; i++) {
+        final conv = conversations[i];
+        print('🔥 MATCHES: Conversation $i - partner: ${conv['partner_name']}, unread_count: ${conv['unread_count']}');
+      }
 
+      // Check for new messages and remove viewed status if there are new unread messages
+      _updateViewedConversationsForNewMessages(conversations);
+      
       setState(() {
         _conversations = conversations;
       });
+      print('🔥 MATCHES: setState completed with new conversations');
     } catch (e) {
+      print('🔥 MATCHES: Error in _loadMatches: $e');
       setState(() {
         _errorMessage = 'Konuşmalar yüklenirken hata oluştu: $e';
       });
@@ -139,16 +229,21 @@ class _MatchesScreenState extends State<MatchesScreen> {
         itemBuilder: (context, index) {
           final conversation = _conversations[index];
           final latestMessage = conversation['latest_message'];
-          final unreadCount = conversation['unread_count'] as int;
+          final databaseUnreadCount = conversation['unread_count'] as int;
+          final conversationId = conversation['conversation_id'] as String;
           final partnerName = conversation['partner_name'] as String;
           final partnerImageUrl = conversation['partner_image_url'] as String?;
+
+          // Use local state to determine if conversation should show badge
+          final isViewedLocally = _viewedConversations.contains(conversationId);
+          final localUnreadCount = (databaseUnreadCount > 0 && !isViewedLocally) ? databaseUnreadCount : 0;
 
           return _buildConversationTile(
             conversation: conversation,
             partnerName: partnerName,
             partnerImageUrl: partnerImageUrl,
             latestMessage: latestMessage,
-            unreadCount: unreadCount,
+            unreadCount: localUnreadCount,
           );
         },
       ),
@@ -354,32 +449,28 @@ class _MatchesScreenState extends State<MatchesScreen> {
           ],
         ),
         onTap: () async {
-          // Mark messages as read when entering chat
-          final currentUser = Provider.of<AuthProvider>(context, listen: false)
-              .currentUserProfile;
-          if (currentUser != null && conversation['conversation_id'] != null) {
-            try {
-              await _chatService.markMessagesAsRead(
-                conversation['conversation_id'],
-                currentUser.id,
-              );
-
-              // Immediately update the UI to remove the notification badge
-              setState(() {
-                // Find and update the conversation in the list
-                final conversationIndex = _conversations.indexWhere(
-                  (conv) => conv['conversation_id'] == conversation['conversation_id']
-                );
-                if (conversationIndex != -1) {
-                  _conversations[conversationIndex]['unread_count'] = 0;
-                }
-              });
-            } catch (e) {
-              print('Error marking messages as read: $e');
-            }
+          final conversationId = conversation['conversation_id'] as String;
+          print('🔥 MATCHES: Conversation tapped: $conversationId');
+          
+          // Immediately mark conversation as viewed locally and update UI
+          setState(() {
+            _viewedConversations.add(conversationId);
+          });
+          
+          // Save to SharedPreferences for persistence
+          await _saveViewedConversations();
+          print('🔥 MATCHES: Conversation marked as viewed locally and saved');
+          
+          // Mark messages as read in database (async, don't wait)
+          final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+          if (currentUser != null) {
+            _chatService.markMessagesAsRead(conversationId, currentUser.id).catchError((e) {
+              print('🔥 MATCHES: Error marking messages as read in database: $e');
+            });
           }
 
-          Navigator.pushNamed(
+          // Navigate to chat
+          final result = await Navigator.pushNamed(
             context,
             AppRoutes.improvedChatScreen,
             arguments: {
@@ -389,6 +480,9 @@ class _MatchesScreenState extends State<MatchesScreen> {
               'partnerId': conversation['partner_id'],
             },
           );
+          
+          // Reload conversations when returning from chat to get any new messages
+          await _loadMatches();
         },
       ),
     );
@@ -517,7 +611,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
             color: AppTheme.lightTheme.colorScheme.primary,
             size: 24,
           ),
-          label: 'Mesajlar',
+          label: 'Eşleşmeler',
         ),
         BottomNavigationBarItem(
           icon: CustomIconWidget(

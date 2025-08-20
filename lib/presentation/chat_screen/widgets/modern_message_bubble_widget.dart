@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-import '../../../core/app_export.dart';
 import '../../../models/message.dart';
 
 class ModernMessageBubbleWidget extends StatelessWidget {
@@ -8,6 +7,7 @@ class ModernMessageBubbleWidget extends StatelessWidget {
   final bool isMe;
   final bool showAvatar;
   final String? partnerImageUrl;
+  final String? currentUserImageUrl;
   final VoidCallback? onLongPress;
 
   const ModernMessageBubbleWidget({
@@ -16,6 +16,7 @@ class ModernMessageBubbleWidget extends StatelessWidget {
     required this.isMe,
     this.showAvatar = true,
     this.partnerImageUrl,
+    this.currentUserImageUrl,
     this.onLongPress,
   });
 
@@ -24,6 +25,17 @@ class ModernMessageBubbleWidget extends StatelessWidget {
   }
 
   Widget _buildAvatar() {
+    // Use the correct image URL based on who sent the message
+    String? imageUrl;
+    
+    if (isMe) {
+      // If it's my message, use my profile image
+      imageUrl = currentUserImageUrl ?? message.senderImageUrl;
+    } else {
+      // If it's partner's message, use partner's image
+      imageUrl = partnerImageUrl ?? message.senderImageUrl;
+    }
+    
     return Container(
       width: 8.w,
       height: 8.w,
@@ -36,10 +48,10 @@ class ModernMessageBubbleWidget extends StatelessWidget {
       ),
       child: CircleAvatar(
         backgroundColor: Colors.grey[300],
-        backgroundImage: partnerImageUrl?.isNotEmpty == true
-            ? NetworkImage(partnerImageUrl!)
+        backgroundImage: imageUrl?.isNotEmpty == true
+            ? NetworkImage(imageUrl!)
             : null,
-        child: partnerImageUrl?.isEmpty ?? true
+        child: imageUrl?.isEmpty ?? true
             ? Icon(
                 Icons.person,
                 color: Colors.grey[600],
@@ -73,7 +85,13 @@ class ModernMessageBubbleWidget extends StatelessWidget {
               SizedBox(width: 2.w),
               _buildReceivedMessage(),
             ],
-            if (isMe) _buildSentMessage(),
+            if (isMe) ...[
+              _buildSentMessage(),
+              if (showAvatar) ...[
+                SizedBox(width: 2.w),
+                _buildAvatar(),
+              ],
+            ],
           ],
         ),
       ),
