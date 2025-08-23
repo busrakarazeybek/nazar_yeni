@@ -7,6 +7,7 @@ import '../../models/match_proposal.dart';
 import '../../services/match_proposal_service.dart';
 import './widgets/enhanced_candidate_selection_carousel_widget.dart';
 import './widgets/enhanced_potential_matches_section_widget.dart';
+import './widgets/preferences_context_widget.dart';
 
 class EnhancedSelectorHomeScreen extends StatefulWidget {
   const EnhancedSelectorHomeScreen({super.key});
@@ -46,6 +47,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   UserProfile? lastSwipedCandidate;
   bool _hasCheckedArguments = false;
   bool _isRequestsExpanded = false; // Gelen istekler açık/kapalı durumu
+  String? _pendingSelectedCandidateId; // Data yüklendikten sonra seçilecek candidate
 
   @override
   void initState() {
@@ -66,13 +68,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       if (args != null && args.containsKey('selectedCandidateId')) {
-        final selectedCandidateId = args['selectedCandidateId'] as String;
-        print('Pre-selecting candidate with ID: $selectedCandidateId');
-
-        // Wait for data to load, then select the candidate
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _selectCandidateById(selectedCandidateId);
-        });
+        _pendingSelectedCandidateId = args['selectedCandidateId'] as String;
       }
 
       // Sayfa her açıldığında verileri yenile
@@ -86,14 +82,10 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         (c) => c.id == candidateId,
       );
 
-      print('Found and selecting candidate: ${candidate.fullName}');
       _onCandidateSelected(candidate);
     } catch (e) {
-      print('Candidate with ID $candidateId not found in assigned candidates');
       // If the specific candidate is not found, select the first one if available
       if (_assignedCandidates.isNotEmpty) {
-        print(
-            'Selecting first available candidate: ${_assignedCandidates.first.fullName}');
         _onCandidateSelected(_assignedCandidates.first);
       }
     }
@@ -201,6 +193,14 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         _pendingMatches = (results[4] as List).length;
         _isLoading = false;
       });
+
+      // Auto-select pending candidate if available
+      if (_pendingSelectedCandidateId != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _selectCandidateById(_pendingSelectedCandidateId!);
+          _pendingSelectedCandidateId = null; // Clear after use
+        });
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -877,15 +877,54 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     );
   }
 
-  void _removeCandidate(UserProfile candidate) {
-    setState(() {
-      _assignedCandidates.removeWhere((c) => c.id == candidate.id);
-      _removedCandidateIds.add(candidate.id);
-      if (_selectedCandidate?.id == candidate.id) {
-        _selectedCandidate = null;
-        _filteredMatches = [];
-      }
-    });
+  void _removeCandidate(UserProfile candidate) async {
+    try {
+      final currentUser =
+          Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      if (currentUser == null) return;
+
+      // Veritabanında adayı duraklat
+      await _userService.pauseCandidateForSelector(
+        selectorId: currentUser.id,
+        candidateId: candidate.id,
+      );
+
+      setState(() {
+        _assignedCandidates.removeWhere((c) => c.id == candidate.id);
+        _removedCandidateIds.add(candidate.id);
+        if (_selectedCandidate?.id == candidate.id) {
+          _selectedCandidate = null;
+          _filteredMatches = [];
+        }
+      });
+
+      // Başarı mesajı göster
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${candidate.fullName} duraklatıldı'),
+          backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'Geri Al',
+            textColor: Colors.white,
+            onPressed: () async {
+              try {
+                // Adayı tekrar aktifleştir
+                await _userService.activateCandidateForSelector(
+                  selectorId: currentUser.id,
+                  candidateId: candidate.id,
+                );
+                // Sayfayı yenile
+                await _refreshData();
+              } catch (e) {
+                _showErrorMessage('Aday aktifleştirilemedi: $e');
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      _showErrorMessage('Aday duraklatılamadı: $e');
+    }
   }
 
   @override
@@ -904,30 +943,20 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
             ? _buildLoadingState()
             : _error != null
                 ? _buildErrorState()
-                : RefreshIndicator(
-                    onRefresh: _refreshData,
-                    color: AppTheme.lightTheme.primaryColor,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: AnimatedBuilder(
-                        animation: _fadeAnimation,
-                        builder: (context, child) {
-                          return Opacity(
-                            opacity: _fadeAnimation.value,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(height: 1.h),
-                                _buildTopSection(),
-                                SizedBox(height: 2.h),
-                                _buildBottomSection(),
-                                SizedBox(height: 4.h),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                : AnimatedBuilder(
+                    animation: _fadeAnimation,
+                    builder: (context, child) {
+                      return Opacity(
+                        opacity: _fadeAnimation.value,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildTopSection(),
+                            Expanded(child: _buildBottomSection()),
+                          ],
+                        ),
+                      );
+                    },
                   ),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
@@ -1105,20 +1134,20 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
               return SizedBox.shrink();
             },
           ),
+          SizedBox(height: 1.h),
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(1.5.w),
+                padding: EdgeInsets.all(1.2.w),
                 decoration: BoxDecoration(
-                  color: AppTheme.lightTheme.primaryColor.withValues(
-                    alpha: 0.1,
-                  ),
-                  borderRadius: BorderRadius.circular(4.w),
+                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(5),
                 ),
-                child: Text(
-                  '👥',
-                  style: TextStyle(fontSize: 14.sp),
-                ), // Küçültüldü
+                child: CustomIconWidget(
+                  iconName: 'group',
+                  color: AppTheme.lightTheme.primaryColor,
+                  size: 18,
+                ),
               ),
               SizedBox(width: 2.w),
               Expanded(
@@ -1142,23 +1171,25 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
               ),
             ],
           ),
-          SizedBox(height: 1.2.h), // Küçültüldü
-          AnimatedBuilder(
-            animation: _selectionAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _selectionAnimation.value,
-                child: _assignedCandidates.isEmpty
-                    ? _buildAddCandidateButton()
-                    : EnhancedCandidateSelectionCarousel(
-                        candidates: _assignedCandidates,
-                        selectedCandidate: _selectedCandidate,
-                        onCandidateSelected: _onCandidateSelected,
-                        onRemoveCandidate: _removeCandidate,
-                        onAddCandidate: _showAddCandidateModal,
-                      ),
-              );
-            },
+          SizedBox(height: 1.h),
+          Center(
+            child: AnimatedBuilder(
+              animation: _selectionAnimation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _selectionAnimation.value,
+                  child: _assignedCandidates.isEmpty
+                      ? _buildAddCandidateButton()
+                      : EnhancedCandidateSelectionCarousel(
+                          candidates: _assignedCandidates,
+                          selectedCandidate: _selectedCandidate,
+                          onCandidateSelected: _onCandidateSelected,
+                          onRemoveCandidate: _removeCandidate,
+                          onAddCandidate: _showAddCandidateModal,
+                        ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -1212,7 +1243,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     final userProfile = authProvider.currentUserProfile;
     return BottomNavigationBar(
       currentIndex: 0,
-      onTap: (index) {
+      onTap: (index) async {
         switch (index) {
           case 0:
             if (userProfile != null && userProfile.role == UserRole.candidate) {
@@ -1233,7 +1264,9 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
             Navigator.pushNamed(context, '/my-selections-screen');
             break;
           case 2:
-            Navigator.pushNamed(context, '/my-selectors-screen');
+            // Adaylarım sayfasına git ve dönüşte her zaman refresh yap
+            await Navigator.pushNamed(context, '/my-selectors-screen');
+            await _refreshData(); // Her zaman refresh yap
             break;
           case 3:
             Navigator.pushNamed(context, '/profile-screen');
@@ -1459,7 +1492,7 @@ class _AddCandidateModalState extends State<_AddCandidateModal> {
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              labelText: 'Aday adı veya e-posta',
+              labelText: 'Aday adı, e-posta veya telefon',
               suffixIcon: IconButton(
                 icon: Icon(Icons.search),
                 onPressed: _search,

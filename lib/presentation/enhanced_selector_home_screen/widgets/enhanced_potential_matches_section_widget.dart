@@ -39,7 +39,7 @@ class _EnhancedPotentialMatchesSectionState
       final visibleCount = widget.potentialMatches.length.clamp(0, 3);
       final topIndex = visibleCount - 1;
       final actualTopCandidate = widget.potentialMatches[topIndex];
-      
+
       if (currentTopCandidate == null ||
           actualTopCandidate.id != currentTopCandidate!.id) {
         setState(() {
@@ -62,11 +62,16 @@ class _EnhancedPotentialMatchesSectionState
         children: [
           _buildSectionHeader(context),
           SizedBox(height: 2.h),
-          PreferencesContextWidget(selectedCandidate: widget.selectedCandidate),
-          SizedBox(height: 2.h),
           widget.selectedCandidate == null
               ? _buildSelectionPrompt(context)
-              : _buildSwipeableCards(context),
+              : Column(
+                  children: [
+                    PreferencesContextWidget(
+                        selectedCandidate: widget.selectedCandidate),
+                    SizedBox(height: 1.h),
+                    _buildSwipeableCards(context),
+                  ],
+                ),
         ],
       ),
     );
@@ -94,8 +99,8 @@ class _EnhancedPotentialMatchesSectionState
           children: [
             Text(
               widget.selectedCandidate != null
-                  ? 'Tercih Edilen Adaylar'
-                  : 'Potansiyel Eşleşmeler',
+                  ? 'Potansiyel Adaylar'
+                  : 'Potansiyel Adaylar',
               style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: AppTheme.lightTheme.colorScheme.onSurface,
@@ -211,17 +216,17 @@ class _EnhancedPotentialMatchesSectionState
     final topCandidate = currentTopCandidate ?? widget.potentialMatches.first;
 
     return SizedBox(
-      height: 55.h,
+      height: 80.h,
       child: CustomSwipeableCard(
-        cards: widget.potentialMatches.map((candidate) => 
-          EnhancedSwipeableCandidateCard(
-            candidate: candidate,
-            selectedCandidate: widget.selectedCandidate,
-            onSwipeRight: null,
-            onSwipeLeft: null,
-            isTopCard: true,
-          )
-        ).toList(),
+        cards: widget.potentialMatches
+            .map((candidate) => EnhancedSwipeableCandidateCard(
+                  candidate: candidate,
+                  selectedCandidate: widget.selectedCandidate,
+                  onSwipeRight: null,
+                  onSwipeLeft: null,
+                  isTopCard: true,
+                ))
+            .toList(),
         onSwipe: (direction, index) {
           if (index < widget.potentialMatches.length) {
             final candidate = widget.potentialMatches[index];
@@ -263,7 +268,7 @@ class _EnhancedPotentialMatchesSectionState
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: 60.h,
+        height: 75.h,
         decoration: BoxDecoration(
           color: AppTheme.lightTheme.colorScheme.surface,
           borderRadius: BorderRadius.only(

@@ -35,8 +35,9 @@ class _EnhancedCandidateSelectionCarouselState
           ? _buildAddCandidateButton()
           : ListView.builder(
               scrollDirection: Axis.horizontal,
-              physics: BouncingScrollPhysics(),
-              padding: EdgeInsets.symmetric(horizontal: 4.w),
+              physics: ClampingScrollPhysics(),
+              padding: EdgeInsets.only(left: 4.w), // Sol padding eklendi
+              shrinkWrap: true,
               itemCount: widget.candidates.length + 1, // +1 for add button
               itemBuilder: (context, index) {
                 if (index == widget.candidates.length) {
@@ -48,7 +49,8 @@ class _EnhancedCandidateSelectionCarouselState
                 return AnimatedContainer(
                   duration: Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
-                  margin: EdgeInsets.symmetric(horizontal: 1.w),
+                  width: 15.w, // Reduced width
+                  margin: EdgeInsets.zero, // No margin between profiles
                   child: GestureDetector(
                     onTap: () => widget.onCandidateSelected(candidate),
                     onLongPress: () => _showRemoveDialog(candidate),
@@ -58,8 +60,8 @@ class _EnhancedCandidateSelectionCarouselState
                   AnimatedContainer(
                     duration: Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
-                    width: isSelected ? 12.w : 10.w,
-                    height: isSelected ? 12.w : 10.w,
+                    width: 12.w, // Hep büyük boyut
+                    height: 12.w, // Hep büyük boyut
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -98,9 +100,8 @@ class _EnhancedCandidateSelectionCarouselState
                   AnimatedDefaultTextStyle(
                     duration: Duration(milliseconds: 300),
                     style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w500,
-                      fontSize: isSelected ? 9.sp : 8.sp,
+                      fontWeight: FontWeight.w600, // Hep kalın
+                      fontSize: 9.sp, // Hep büyük font
                       color: isSelected
                           ? AppTheme.lightTheme.primaryColor
                           : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
@@ -142,7 +143,7 @@ class _EnhancedCandidateSelectionCarouselState
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: isSelected ? 10.sp : 8.sp,
+            fontSize: 10.sp, // Hep büyük font
           ),
         ),
       ),
@@ -198,7 +199,7 @@ class _EnhancedCandidateSelectionCarouselState
 
   Widget _buildAddCandidateButton() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 2.w),
+      margin: EdgeInsets.zero,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

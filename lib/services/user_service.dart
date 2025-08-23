@@ -114,6 +114,57 @@ class UserService {
     }
   }
 
+  /// Get all candidates for a specific selector (including paused ones)
+  Future<List<Map<String, dynamic>>> getSelectorCandidatesWithStatus(String selectorId) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      final response = await client.from('selector_candidates').select('''
+            candidate_id,
+            status,
+            user_profiles!candidate_id (
+              id,
+              full_name,
+              email,
+              image_url,
+              age,
+              location,
+              profession,
+              bio,
+              interests,
+              created_at,
+              is_active,
+              is_verified
+            )
+          ''').eq('selector_id', selectorId);
+
+      final result = response.map((item) {
+        final userProfile = item['user_profiles'];
+        
+        return {
+          'id': userProfile['id'],
+          'name': userProfile['full_name'],
+          'email': userProfile['email'],
+          'imageUrl': userProfile['image_url'],
+          'age': userProfile['age'],
+          'location': userProfile['location'],
+          'profession': userProfile['profession'],
+          'bio': userProfile['bio'],
+          'interests': userProfile['interests'],
+          'createdAt': userProfile['created_at'],
+          'isActive': item['status'] == 'active',
+          'isPaused': item['status'] == 'paused',
+          'status': item['status'],
+          'isVerified': userProfile['is_verified'],
+        };
+      }).toList();
+      
+      return result;
+    } catch (error) {
+      throw Exception('Failed to get selector candidates with status: $error');
+    }
+  }
+
   /// Add candidate to selector's list
   Future<void> addCandidateToSelector({
     required String selectorId,
@@ -148,7 +199,41 @@ class UserService {
     }
   }
 
-  /// Search users by name or email
+  /// Pause candidate in selector's list
+  Future<void> pauseCandidateForSelector({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      await client
+          .from('selector_candidates')
+          .update({'status': 'paused'})
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId);
+    } catch (error) {
+      throw Exception('Failed to pause candidate for selector: $error');
+    }
+  }
+
+  /// Activate candidate in selector's list
+  Future<void> activateCandidateForSelector({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      await client
+          .from('selector_candidates')
+          .update({'status': 'active'})
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId);
+    } catch (error) {
+      throw Exception('Failed to activate candidate for selector: $error');
+    }
+  }
+
+  /// Search users by name, email or phone number
   Future<List<UserProfile>> searchUsers({
     required String query,
     UserRole? role,
@@ -156,11 +241,25 @@ class UserService {
   }) async {
     try {
       final client = await _supabaseService.client;
+      
+      // Check if query looks like a phone number (contains only digits and common separators)
+      final isPhoneQuery = RegExp(r'^[\d\s\-\+\(\)]+$').hasMatch(query.trim());
+      
       var queryBuilder = client
           .from('user_profiles')
-          .select()
-          .or('full_name.ilike.%$query%,email.ilike.%$query%')
-          .eq('is_active', true);
+          .select();
+      
+      if (isPhoneQuery) {
+        // Search in name, email AND phone if query looks like phone number
+        queryBuilder = queryBuilder
+            .or('full_name.ilike.%$query%,email.ilike.%$query%,phone.ilike.%$query%')
+            .eq('is_active', true);
+      } else {
+        // Search only in name and email for regular text queries
+        queryBuilder = queryBuilder
+            .or('full_name.ilike.%$query%,email.ilike.%$query%')
+            .eq('is_active', true);
+      }
 
       if (role != null) {
         queryBuilder = queryBuilder.eq('role', role.toString().split('.').last);

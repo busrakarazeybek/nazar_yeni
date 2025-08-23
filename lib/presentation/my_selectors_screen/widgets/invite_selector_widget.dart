@@ -22,8 +22,10 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String _selectedRelationship = "Aile";
+  String _searchQuery = '';
   final List<String> _relationships = [
     "Aile",
     "Arkadaş",

@@ -3,7 +3,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 
-class PreferencesContextWidget extends StatelessWidget {
+class PreferencesContextWidget extends StatefulWidget {
   final UserProfile? selectedCandidate;
 
   const PreferencesContextWidget({
@@ -12,16 +12,23 @@ class PreferencesContextWidget extends StatelessWidget {
   });
 
   @override
+  State<PreferencesContextWidget> createState() => _PreferencesContextWidgetState();
+}
+
+class _PreferencesContextWidgetState extends State<PreferencesContextWidget> {
+  bool _isExpanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    if (selectedCandidate == null) {
+    if (widget.selectedCandidate == null) {
       return const SizedBox.shrink();
     }
 
-    final hasPreferences = _hasAnyPreferences(selectedCandidate!);
+    final hasPreferences = _hasAnyPreferences(widget.selectedCandidate!);
 
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-      padding: EdgeInsets.all(1.5.w),
+      margin: EdgeInsets.symmetric(horizontal: 0.w, vertical: 0.2.h),
+      padding: EdgeInsets.all(1.w),
       decoration: BoxDecoration(
         color: hasPreferences
             ? AppTheme.lightTheme.primaryColor.withOpacity(0.06)
@@ -44,43 +51,67 @@ class PreferencesContextWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                hasPreferences ? Icons.filter_alt : Icons.filter_alt_off,
-                color: hasPreferences
-                    ? AppTheme.lightTheme.primaryColor
-                    : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                size: 18,
-              ),
-              SizedBox(width: 1.5.w),
-              Text(
-                hasPreferences
-                    ? '${selectedCandidate!.fullName} için tercih filtreleri'
-                    : 'Tercih filtresi yok - Karışık gösterim',
-                style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+          GestureDetector(
+            onTap: hasPreferences ? () => setState(() => _isExpanded = !_isExpanded) : null,
+            child: Row(
+              children: [
+                Icon(
+                  hasPreferences ? Icons.filter_alt : Icons.filter_alt_off,
                   color: hasPreferences
                       ? AppTheme.lightTheme.primaryColor
                       : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+                  size: 18,
                 ),
-              ),
-            ],
-          ),
-          if (hasPreferences) ...[
-            SizedBox(height: 1.2.h),
-            _buildPreferencesInfo(),
-          ] else ...[
-            SizedBox(height: 0.7.h),
-            Text(
-              'Bu aday tercihlerini belirtmediği için tüm potansiyel adaylar karışık olarak gösterilecek.',
-              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
+                SizedBox(width: 1.5.w),
+                Expanded(
+                  child: Text(
+                    hasPreferences
+                        ? '${widget.selectedCandidate!.fullName} için tercih filtreleri'
+                        : 'Tercih filtresi yok - Karışık gösterim',
+                    style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                      color: hasPreferences
+                          ? AppTheme.lightTheme.primaryColor
+                          : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                if (hasPreferences)
+                  AnimatedRotation(
+                    turns: _isExpanded ? 0.5 : 0,
+                    duration: Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.keyboard_arrow_down,
+                      color: AppTheme.lightTheme.primaryColor,
+                      size: 20,
+                    ),
+                  ),
+              ],
             ),
-          ],
+          ),
+          AnimatedSize(
+            duration: Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (hasPreferences && _isExpanded) ...[
+                  SizedBox(height: 1.2.h),
+                  _buildPreferencesInfo(),
+                ] else if (!hasPreferences) ...[
+                  SizedBox(height: 0.7.h),
+                  Text(
+                    'Bu aday tercihlerini belirtmediği için tüm potansiyel adaylar karışık olarak gösterilecek.',
+                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -97,28 +128,28 @@ class PreferencesContextWidget extends StatelessWidget {
 
   Widget _buildPreferencesInfo() {
     final chips = <Widget>[];
-    if (selectedCandidate!.preferredAgeMin != null &&
-        selectedCandidate!.preferredAgeMax != null) {
+    if (widget.selectedCandidate!.preferredAgeMin != null &&
+        widget.selectedCandidate!.preferredAgeMax != null) {
       chips.add(_buildPreferenceChip(
         icon: Icons.calendar_today,
         label: 'Yaş',
-        value: '${selectedCandidate!.preferredAgeMin} - ${selectedCandidate!.preferredAgeMax}',
+        value: '${widget.selectedCandidate!.preferredAgeMin} - ${widget.selectedCandidate!.preferredAgeMax}',
       ));
     }
-    if (selectedCandidate!.preferredCities != null &&
-        selectedCandidate!.preferredCities!.isNotEmpty) {
+    if (widget.selectedCandidate!.preferredCities != null &&
+        widget.selectedCandidate!.preferredCities!.isNotEmpty) {
       chips.add(_buildPreferenceChip(
         icon: Icons.location_on,
         label: 'Şehirler',
-        value: selectedCandidate!.preferredCities!.join(', '),
+        value: widget.selectedCandidate!.preferredCities!.join(', '),
       ));
     }
-    if (selectedCandidate!.preferredGenders != null &&
-        selectedCandidate!.preferredGenders!.isNotEmpty) {
+    if (widget.selectedCandidate!.preferredGenders != null &&
+        widget.selectedCandidate!.preferredGenders!.isNotEmpty) {
       chips.add(_buildPreferenceChip(
         icon: Icons.person,
         label: 'Cinsiyet',
-        value: selectedCandidate!.preferredGenders!
+        value: widget.selectedCandidate!.preferredGenders!
             .map((g) => _getGenderDisplayName(g))
             .join(', '),
       ));

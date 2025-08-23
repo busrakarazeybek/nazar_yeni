@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_export.dart';
 import '../../models/match_proposal.dart';
 import '../../services/match_proposal_service.dart';
+import '../../services/user_service.dart';
 import './widgets/empty_selectors_widget.dart';
 import './widgets/invite_selector_widget.dart';
 import './widgets/selector_card_widget.dart';
@@ -67,36 +68,64 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
       List<MatchProposal> proposals = []; // Proposals'ı burada tanımla
 
       if (currentUser.role == UserRole.selector) {
-        // For selectors: Get candidates (existing logic)
-        final candidates =
-            await _userService.getSelectorCandidates(currentUser.id);
+        // For selectors: Get candidates with their status (including paused ones)
+        final candidatesWithStatus =
+            await _userService.getSelectorCandidatesWithStatus(currentUser.id);
 
-        // Convert UserProfile candidates to selector format for UI consistency
-        loadedSelectors = candidates.map((candidate) {
-          // Generate mock stats based on candidate ID for consistency
-          final stats = _generateStatsForCandidate(candidate.id);
+        // Load real statistics for each candidate
+        final matchProposalService = MatchProposalService();
+        final allProposalsForSelector = await matchProposalService.getSelectorProposals(currentUser.id);
+        
+        // Convert candidates with status to selector format for UI consistency
+        loadedSelectors = candidatesWithStatus.map((candidateData) {
+          final candidateId = candidateData['id'];
+          final createdAt = candidateData['createdAt'] != null 
+              ? DateTime.parse(candidateData['createdAt'])
+              : DateTime.now();
+
+          // Calculate real stats for this candidate
+          final candidateProposals = allProposalsForSelector.where((proposal) => 
+              proposal.candidateId == candidateId || proposal.targetCandidateId == candidateId
+          ).toList();
+
+          final totalSent = candidateProposals.length;
+          final pending = candidateProposals.where((p) => 
+              (p.candidateId == candidateId && p.status == AcceptanceStatus.pending) ||
+              (p.targetCandidateId == candidateId && p.targetStatus == AcceptanceStatus.pending)
+          ).length;
+          final accepted = candidateProposals.where((p) => 
+              (p.candidateId == candidateId && p.status == AcceptanceStatus.accepted) ||
+              (p.targetCandidateId == candidateId && p.targetStatus == AcceptanceStatus.accepted)
+          ).length;
+          final rejected = candidateProposals.where((p) => 
+              (p.candidateId == candidateId && p.status == AcceptanceStatus.rejected) ||
+              (p.targetCandidateId == candidateId && p.targetStatus == AcceptanceStatus.rejected)
+          ).length;
+          
+          final successRate = totalSent > 0 ? (accepted / totalSent * 100) : 0.0;
 
           return {
-            "id": candidate.id, // Use real ID instead of hashCode
-            "name": candidate.fullName,
-            "profileImage": candidate.imageUrl?.isNotEmpty == true
-                ? candidate.imageUrl
-                : _getDefaultImageForCandidate(candidate.fullName),
-            "relationshipType": _getRelationshipType(candidate),
-            "isActive": candidate.isActive,
-            "totalSent": stats['totalSent'],
-            "pending": stats['pending'],
-            "accepted": stats['accepted'],
-            "rejected": stats['rejected'],
-            "successRate": stats['successRate'],
-            "lastActivity": _getLastActivity(candidate),
-            "joinedDate": _formatJoinDate(candidate.createdAt),
-            "description": candidate.bio ?? _getDefaultDescription(candidate),
-            "isPaused": !candidate.isActive,
-            "age": candidate.age,
-            "location": candidate.location,
-            "profession": candidate.profession,
-            "interests": candidate.interests,
+            "id": candidateId,
+            "name": candidateData['name'],
+            "email": candidateData['email'],
+            "profileImage": candidateData['imageUrl']?.isNotEmpty == true
+                ? candidateData['imageUrl']
+                : _getDefaultImageForCandidate(candidateData['name']),
+            "relationshipType": "Aday",
+            "isActive": candidateData['isActive'],
+            "totalSent": totalSent,
+            "pending": pending,
+            "accepted": accepted,
+            "rejected": rejected,
+            "successRate": successRate,
+            "lastActivity": "Son görülme: Bilinmiyor",
+            "joinedDate": _formatJoinDate(createdAt),
+            "description": candidateData['bio'] ?? "Seçiminizde ki aday",
+            "isPaused": candidateData['isPaused'],
+            "age": candidateData['age'],
+            "location": candidateData['location'],
+            "profession": candidateData['profession'],
+            "interests": candidateData['interests'],
           };
         }).toList();
       } else if (currentUser.role == UserRole.candidate) {
@@ -129,8 +158,26 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
 
         // Convert UserProfile selectors to selector format for UI consistency
         loadedSelectors = selectors.map((selector) {
-          // Generate mock stats based on selector ID for consistency
-          final stats = _generateStatsForCandidate(selector.id);
+          // Calculate real stats for this selector (from candidate's perspective)
+          final selectorProposals = proposals.where((proposal) => 
+              proposal.selectorId == selector.id
+          ).toList();
+
+          final totalSent = selectorProposals.length;
+          final pending = selectorProposals.where((p) => 
+              (p.candidateId == currentUser.id && p.status == AcceptanceStatus.pending) ||
+              (p.targetCandidateId == currentUser.id && p.targetStatus == AcceptanceStatus.pending)
+          ).length;
+          final accepted = selectorProposals.where((p) => 
+              (p.candidateId == currentUser.id && p.status == AcceptanceStatus.accepted) ||
+              (p.targetCandidateId == currentUser.id && p.targetStatus == AcceptanceStatus.accepted)
+          ).length;
+          final rejected = selectorProposals.where((p) => 
+              (p.candidateId == currentUser.id && p.status == AcceptanceStatus.rejected) ||
+              (p.targetCandidateId == currentUser.id && p.targetStatus == AcceptanceStatus.rejected)
+          ).length;
+          
+          final successRate = totalSent > 0 ? (accepted / totalSent * 100) : 0.0;
 
           return {
             "id": selector.id,
@@ -140,11 +187,11 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                 : _getDefaultImageForCandidate(selector.fullName),
             "relationshipType": _getRelationshipType(selector),
             "isActive": selector.isActive,
-            "totalSent": stats['totalSent'],
-            "pending": stats['pending'],
-            "accepted": stats['accepted'],
-            "rejected": stats['rejected'],
-            "successRate": stats['successRate'],
+            "totalSent": totalSent,
+            "pending": pending,
+            "accepted": accepted,
+            "rejected": rejected,
+            "successRate": successRate,
             "lastActivity": _getLastActivity(selector),
             "joinedDate": _formatJoinDate(selector.createdAt),
             "description": selector.bio ?? _getDefaultDescription(selector),
@@ -240,17 +287,6 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     return parts.isNotEmpty ? parts.join(", ") : "Ailemizin sevgili adayı";
   }
 
-  Map<String, dynamic> _generateStatsForCandidate(String candidateId) {
-    // Generate consistent mock stats based on candidate ID
-    final hash = candidateId.hashCode.abs();
-    return {
-      'totalSent': 8 + (hash % 10),
-      'pending': 1 + (hash % 4),
-      'accepted': 3 + (hash % 8),
-      'rejected': hash % 3,
-      'successRate': 40.0 + ((hash % 30).toDouble()),
-    };
-  }
 
   String _getRelationshipType(UserProfile candidate) {
     // You could add this to UserProfile model or determine from other fields
@@ -462,7 +498,15 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                         SizedBox(width: 2.w),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => _navigateToMatchmaking(selector),
+                            onPressed: (selector['isPaused'] as bool) 
+                                ? null // Deaktif yap
+                                : () => _navigateToMatchmaking(selector),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: (selector['isPaused'] as bool)
+                                  ? Colors.grey // Gri renk
+                                  : AppTheme.lightTheme.primaryColor,
+                              foregroundColor: Colors.white,
+                            ),
                             child: Text(_getActionButtonText()),
                           ),
                         ),
@@ -506,26 +550,71 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     );
   }
 
-  void _toggleSelectorStatus(Map<String, dynamic> selector) {
-    setState(() {
-      selector['isPaused'] = !(selector['isPaused'] as bool);
-      selector['isActive'] = !(selector['isPaused'] as bool);
-    });
-    Navigator.pop(context);
+  void _toggleSelectorStatus(Map<String, dynamic> selector) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUserProfile;
+    if (currentUser == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          (selector['isPaused'] as bool)
-              ? "${selector['name']} duraklatıldı"
-              : "${selector['name']} aktifleştirildi",
+    final wasPaused = selector['isPaused'] as bool;
+    
+    // Role'e göre ID'leri doğru atayalım
+    String selectorId, candidateId;
+    if (currentUser.role == UserRole.selector) {
+      // Eğer current user selector ise
+      selectorId = currentUser.id; // selector ID
+      candidateId = selector['id'] as String; // candidate ID
+    } else {
+      // Eğer current user candidate ise
+      selectorId = selector['id'] as String; // selector ID  
+      candidateId = currentUser.id; // candidate ID
+    }
+
+    try {
+      // Veritabanında durumu güncelle
+      if (wasPaused) {
+        // Aktifleştir
+        await _userService.activateCandidateForSelector(
+          selectorId: selectorId,
+          candidateId: candidateId,
+        );
+      } else {
+        // Duraklat
+        await _userService.pauseCandidateForSelector(
+          selectorId: selectorId,
+          candidateId: candidateId,
+        );
+      }
+
+      setState(() {
+        selector['isPaused'] = !wasPaused;
+        selector['isActive'] = wasPaused;
+      });
+      Navigator.pop(context); // Context menüyü kapat
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (!wasPaused)
+                ? "${selector['name']} duraklatıldı - Anasayfa güncellenecek"
+                : "${selector['name']} aktifleştirildi - Anasayfa güncellenecek",
+          ),
+          backgroundColor: (!wasPaused) ? Colors.orange : Colors.green,
+          action: SnackBarAction(
+            label: "Geri Al",
+            textColor: Colors.white,
+            onPressed: () => _toggleSelectorStatus(selector),
+          ),
         ),
-        action: SnackBarAction(
-          label: "Geri Al",
-          onPressed: () => _toggleSelectorStatus(selector),
+      );
+    } catch (e) {
+      // Hata durumunda UI state'i geri al
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İşlem başarısız: $e'),
+          backgroundColor: Colors.red,
         ),
-      ),
-    );
+      );
+    }
   }
 
   void _navigateToMatchmaking(Map<String, dynamic> selector) {
@@ -536,10 +625,8 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     if (role == UserRole.selector) {
       // For selectors: Navigate to enhanced selector home screen with candidate pre-selected
       final candidateId = selector['id'].toString();
-      print('DEBUG: Selector navigating with candidate ID: $candidateId');
-      print('DEBUG: Selector data: $selector');
 
-      Navigator.pushNamed(
+      Navigator.pushReplacementNamed(
         context,
         AppRoutes.enhancedSelectorHomeScreen,
         arguments: {'selectedCandidateId': candidateId},
@@ -547,10 +634,8 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     } else if (role == UserRole.candidate) {
       // For candidates: Navigate to candidate home screen with selector pre-selected
       final selectorId = selector['id'].toString();
-      print('DEBUG: Candidate navigating with selector ID: $selectorId');
-      print('DEBUG: Selector data: $selector');
 
-      Navigator.pushNamed(
+      Navigator.pushReplacementNamed(
         context,
         AppRoutes.candidateHomeScreen,
         arguments: {'selectedSelectorId': selectorId},

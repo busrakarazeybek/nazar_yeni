@@ -99,12 +99,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
           _buildActivityStoryHeader(),
           SizedBox(height: 2.h),
 
-          // Notifications for new requests or responses
-          _buildNotificationsSection(),
-          SizedBox(height: 2.h),
-
-          // Activity feed style proposals
-          _buildActivityFeed(),
+          // Combined notifications and proposals feed
+          _buildCombinedActivityFeed(),
         ],
       ),
     );
@@ -129,6 +125,199 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
         ],
       ),
       child: child,
+    );
+  }
+
+  Widget _buildCombinedActivityFeed() {
+    // Combine notifications and proposals into a single list
+    List<Map<String, dynamic>> combinedItems = [];
+
+    // Add notifications
+    for (final notification in _notifications) {
+      combinedItems.add({
+        'type': 'notification',
+        'data': notification,
+        'created_at': notification['created_at'] as DateTime,
+        'isNew': notification['isNew'] as bool,
+      });
+    }
+
+    // Add proposals (only last 3 days)
+    final threeDaysAgo = DateTime.now().subtract(Duration(days: 3));
+    for (final proposal in _filteredProposals) {
+      // Only add proposals from last 3 days
+      if (proposal.createdAt.isAfter(threeDaysAgo)) {
+        combinedItems.add({
+          'type': 'proposal',
+          'data': proposal,
+          'created_at': proposal.createdAt,
+          'isNew': false, // Proposals don't have isNew flag
+        });
+      }
+    }
+
+    // Sort by date (newest first)
+    combinedItems.sort((a, b) =>
+        (b['created_at'] as DateTime).compareTo(a['created_at'] as DateTime));
+
+    if (combinedItems.isEmpty) {
+      return Container(
+        height: 30.h,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.inbox, size: 48, color: Colors.grey[400]),
+              SizedBox(height: 2.h),
+              Text(
+                'Henüz aktivite yok',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with notification count
+          Row(
+            children: [
+              Icon(Icons.timeline, color: Color(0xFF667EEA), size: 20),
+              SizedBox(width: 2.w),
+              Text(
+                'Tüm Aktiviteler',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3748),
+                ),
+              ),
+              Spacer(),
+              if (combinedItems.any((item) => item['isNew'] == true))
+                Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${combinedItems.where((item) => item['isNew'] == true).length}',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: 2.h),
+
+          // Combined list
+          ...combinedItems.map((item) {
+            if (item['type'] == 'notification') {
+              return Container(
+                margin: EdgeInsets.only(bottom: 2.h),
+                child: _buildNotificationCard(
+                    item['data'] as Map<String, dynamic>),
+              );
+            } else {
+              return Container(
+                margin: EdgeInsets.only(bottom: 2.h),
+                child: _buildActivityCard(item['data'] as MatchProposal),
+              );
+            }
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotificationCard(Map<String, dynamic> notification) {
+    final isNew = notification['isNew'] as bool;
+    return Container(
+      padding: EdgeInsets.all(3.w),
+      decoration: BoxDecoration(
+        color: isNew ? Color(0xFF667EEA).withOpacity(0.1) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isNew ? Color(0xFF667EEA).withOpacity(0.3) : Colors.grey[200]!,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 4.w,
+            backgroundImage: notification['user_image'] != null
+                ? NetworkImage(notification['user_image'])
+                : null,
+            backgroundColor: notification['type'] == 'accepted'
+                ? Colors.green.withOpacity(0.2)
+                : Colors.red.withOpacity(0.2),
+            child: notification['user_image'] == null
+                ? Icon(
+                    notification['type'] == 'accepted'
+                        ? Icons.check_circle
+                        : Icons.cancel,
+                    color: notification['type'] == 'accepted'
+                        ? Colors.green
+                        : Colors.red,
+                    size: 4.w,
+                  )
+                : null,
+          ),
+          SizedBox(width: 3.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  notification['message'] as String,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: isNew ? FontWeight.w600 : FontWeight.normal,
+                    color: Color(0xFF2D3748),
+                  ),
+                ),
+                SizedBox(height: 0.5.h),
+                Text(
+                  notification['time'] as String,
+                  style: TextStyle(
+                    fontSize: 10.sp,
+                    color: Color(0xFF718096),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isNew)
+            Container(
+              width: 2.w,
+              height: 2.w,
+              decoration: BoxDecoration(
+                color: Color(0xFF667EEA),
+                shape: BoxShape.circle,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -280,14 +469,17 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
 
       print('DEBUG - Tüm istekler: $allRequests');
 
-      // Seçiciye gelen yanıtları al
+      // Son 3 günde seçiciye gelen yanıtları al - tarihe göre sıralı (en yeni önce)
+      final threeDaysAgo =
+          DateTime.now().subtract(Duration(days: 3)).toIso8601String();
       final responses = await client
           .from('selector_candidate_requests')
           .select('*')
           .eq('from_user_id', currentUser.id)
           .inFilter('status', ['accepted', 'rejected'])
+          .gte('created_at', threeDaysAgo)
           .order('created_at', ascending: false)
-          .limit(10);
+          .limit(20);
 
       // Kullanıcı bilgilerini ayrı ayrı çek
       final userIds =
@@ -325,10 +517,18 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               ? '${toUser['full_name']} isteğinizi kabul etti!'
               : '${toUser['full_name']} isteğinizi reddetti.',
           'time': _getTimeAgo(createdAt),
+          'created_at': createdAt, // Store actual DateTime for sorting
           'isNew': DateTime.now().difference(createdAt).inHours < 24,
           'user_image': toUser['image_url'],
         });
       }
+
+      // Bildirimleri tarihe göre sırala (en yeni önce)
+      notifications.sort((a, b) {
+        final dateA = a['created_at'] as DateTime;
+        final dateB = b['created_at'] as DateTime;
+        return dateB.compareTo(dateA); // En yeni önce
+      });
 
       print('DEBUG - Son bildirimler: $notifications');
 
@@ -358,7 +558,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               Icon(Icons.auto_awesome, color: Color(0xFF667EEA), size: 20),
               SizedBox(width: 2.w),
               Text(
-                'Recent Activities',
+                'Son Eşleşmeler',
                 style: TextStyle(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.bold,
@@ -397,7 +597,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               ),
               child: Center(
                 child: Text(
-                  'No recent matches',
+                  'Yakın zamanda eşleşme yok',
                   style: TextStyle(
                     color: Colors.grey[500],
                     fontSize: 12.sp,
@@ -475,7 +675,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
           ),
           SizedBox(height: 1.h),
           Text(
-            'Match!',
+            'Eşleştiniz!',
             style: TextStyle(
               fontSize: 10.sp,
               fontWeight: FontWeight.w600,
@@ -564,7 +764,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   text: TextSpan(
                     style: TextStyle(fontSize: 14.sp, color: Color(0xFF2D3748)),
                     children: [
-                      TextSpan(text: 'You found '),
+                      TextSpan(text: 'Başarıyla eşleştirdiniz: '),
                       TextSpan(
                         text: '${proposal.candidateName}',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -660,28 +860,6 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
           // Social engagement
           Row(
             children: [
-              Row(
-                children: List.generate(
-                    3,
-                    (index) => Container(
-                          margin: EdgeInsets.only(right: 1.w),
-                          child: CircleAvatar(
-                            radius: 2.5.w,
-                            backgroundColor: Colors.grey[300],
-                            child: Icon(Icons.person,
-                                size: 3.w, color: Colors.grey[600]),
-                          ),
-                        )),
-              ),
-              SizedBox(width: 2.w),
-              Text(
-                '2 friends ship this',
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  color: Color(0xFF718096),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
               Spacer(),
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
@@ -692,11 +870,10 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.chat_bubble_outline,
-                        size: 3.w, color: Color(0xFF667EEA)),
+                    Icon(Icons.share, size: 3.w, color: Color(0xFF667EEA)),
                     SizedBox(width: 1.w),
                     Text(
-                      'Send Message',
+                      'Paylaş',
                       style: TextStyle(
                         fontSize: 10.sp,
                         color: Color(0xFF667EEA),
@@ -744,7 +921,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                       TextSpan(
                           text: isRejected
                               ? 'You proposed '
-                              : 'You are shipping '),
+                              : 'Eşleştirme öneriniz: '),
                       TextSpan(
                         text: '${proposal.candidateName}',
                         style: TextStyle(fontWeight: FontWeight.bold),
@@ -813,9 +990,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                     ),
                     SizedBox(height: 0.5.h),
                     Text(
-                      isRejected
-                          ? 'Proposal declined'
-                          : 'Waiting for response...',
+                      isRejected ? 'Proposal declined' : 'Yanıt bekleniyor...',
                       style: TextStyle(
                         fontSize: 11.sp,
                         color:
@@ -839,7 +1014,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                         size: 3.w, color: Colors.grey[600]),
                     SizedBox(width: 1.w),
                     Text(
-                      'View',
+                      'Görüntüle',
                       style: TextStyle(
                         fontSize: 10.sp,
                         color: Colors.grey[600],
@@ -1000,81 +1175,82 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color(0xFFF0F4F8),
-      body: CustomScrollView(
-        slivers: [
-          // Modern App Bar with Glassmorphism
-          SliverAppBar(
-            expandedHeight: 140,
-            floating: true,
-            pinned: true,
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            flexibleSpace: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF667EEA).withAlpha(230),
-                    Color(0xFF764BA2).withAlpha(230),
-                  ],
-                ),
-              ),
-              child: FlexibleSpaceBar(
-                titlePadding: EdgeInsets.only(left: 4.w, bottom: 2.h),
-                title: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Önerilerim',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20.sp,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '${_filteredProposals.length} öneri',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              Container(
-                margin: EdgeInsets.only(right: 4.w, top: 1.h),
-                child: IconButton(
-                  onPressed: _loadMyProposals,
-                  icon: Container(
-                    padding: EdgeInsets.all(2.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.refresh,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+      body: Column(
+        children: [
+          // Selector style header
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(1.2.w),
+                  decoration: BoxDecoration(
+                    color: AppTheme.lightTheme.primaryColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: CustomIconWidget(
+                    iconName: 'list',
+                    color: AppTheme.lightTheme.primaryColor,
+                    size: 18,
                   ),
                 ),
-              ),
-            ],
+                SizedBox(width: 2.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Önerilerim',
+                        style:
+                            AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.lightTheme.colorScheme.onSurface,
+                        ),
+                      ),
+                      Text(
+                        '${_filteredProposals.length} öneri',
+                        style:
+                            AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color:
+                              AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: _loadMyProposals,
+                  icon: Icon(Icons.refresh, size: 20),
+                  style: IconButton.styleFrom(
+                    backgroundColor:
+                        AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                    foregroundColor: AppTheme.lightTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
           ),
 
-          // Modern Body Content
-          SliverToBoxAdapter(
-            child: _buildModernBody(),
+          // Progress bar under title
+          Container(
+            margin: EdgeInsets.symmetric(horizontal: 4.w),
+            child: LinearProgressIndicator(
+              value: _isLoading ? null : 1.0,
+              backgroundColor:
+                  AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.lightTheme.primaryColor),
+              minHeight: 2,
+            ),
+          ),
+          SizedBox(height: 1.h),
+
+          // Body content
+          Expanded(
+            child: SingleChildScrollView(
+              physics: AlwaysScrollableScrollPhysics(),
+              child: _buildModernBody(),
+            ),
           ),
         ],
       ),
@@ -1374,7 +1550,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               ),
               SizedBox(height: 1.h),
               Text(
-                "${proposal.candidateName} and ${proposal.targetCandidateName} liked each other!",
+                "${proposal.candidateName} ve ${proposal.targetCandidateName} birbirlerini beğendi!",
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.9),
                   fontSize: 14.sp,
@@ -1402,7 +1578,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                           Icon(Icons.share, color: Colors.white, size: 5.w),
                           SizedBox(width: 2.w),
                           Text(
-                            'Share',
+                            'Paylaş',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 14.sp,
@@ -1410,38 +1586,6 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 3.w),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        // Navigate to chat
-                      },
-                      child: Container(
-                        padding: EdgeInsets.symmetric(vertical: 2.h),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.chat_bubble,
-                                color: Color(0xFF667EEA), size: 5.w),
-                            SizedBox(width: 2.w),
-                            Text(
-                              'Send Message',
-                              style: TextStyle(
-                                color: Color(0xFF667EEA),
-                                fontSize: 14.sp,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ),
