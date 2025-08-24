@@ -177,6 +177,7 @@ class AuthService {
     String? profession,
     String? imageUrl,
     String? phone,
+    bool? isActive,
     int? preferredAgeMin,
     int? preferredAgeMax,
     List<String>? preferredCities,
@@ -198,6 +199,7 @@ class AuthService {
       if (profession != null) updateData['profession'] = profession;
       if (imageUrl != null) updateData['image_url'] = imageUrl;
       if (phone != null) updateData['phone'] = phone;
+      if (isActive != null) updateData['is_active'] = isActive;
       if (preferredAgeMin != null) updateData['preferred_age_min'] = preferredAgeMin;
       if (preferredAgeMax != null) updateData['preferred_age_max'] = preferredAgeMax;
       if (preferredCities != null) updateData['preferred_cities'] = preferredCities;

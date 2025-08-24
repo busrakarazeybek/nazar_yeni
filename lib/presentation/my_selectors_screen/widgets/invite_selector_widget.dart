@@ -37,6 +37,7 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     {
       "name": "Ayşe Demir",
       "phone": "+90 532 123 4567",
+      "email": "ayse.demir@email.com",
       "relationship": "Aile",
       "avatar":
           "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=400",
@@ -44,6 +45,7 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     {
       "name": "Mehmet Özkan",
       "phone": "+90 533 987 6543",
+      "email": "mehmet.ozkan@email.com",
       "relationship": "Arkadaş",
       "avatar":
           "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=400",
@@ -51,6 +53,7 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     {
       "name": "Fatma Yılmaz",
       "phone": "+90 534 555 1234",
+      "email": "fatma.yilmaz@email.com",
       "relationship": "Aile",
       "avatar":
           "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=400",
@@ -58,6 +61,7 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     {
       "name": "Ali Kaya",
       "phone": "+90 535 777 8888",
+      "email": "ali.kaya@email.com",
       "relationship": "İş Arkadaşı",
       "avatar":
           "https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=400",
@@ -68,6 +72,7 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _searchController.addListener(_onSearchChanged);
     _messageController.text =
         "Merhaba! Seni Goricu Matchmaker uygulamasında görücüm olarak davet etmek istiyorum. Bu uygulama sayesinde benim için uygun eş adaylarını bulup önerebilirsin. Kabul edersen çok memnun olurum.";
   }
@@ -79,6 +84,8 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     _phoneController.dispose();
     _emailController.dispose();
     _messageController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -176,8 +183,9 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
         Container(
           margin: EdgeInsets.all(4.w),
           child: TextField(
+            controller: _searchController,
             decoration: InputDecoration(
-              hintText: "Kişi ara...",
+              hintText: "Aday adı, e-posta veya telefon",
               prefixIcon: Padding(
                 padding: EdgeInsets.all(3.w),
                 child: CustomIconWidget(
@@ -186,6 +194,18 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
                   size: 20,
                 ),
               ),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      onPressed: () {
+                        _searchController.clear();
+                      },
+                      icon: CustomIconWidget(
+                        iconName: 'clear',
+                        color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        size: 20,
+                      ),
+                    )
+                  : null,
             ),
           ),
         ),
@@ -194,9 +214,9 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
         Expanded(
           child: ListView.builder(
             padding: EdgeInsets.symmetric(horizontal: 4.w),
-            itemCount: _contacts.length,
+            itemCount: _getFilteredContacts().length,
             itemBuilder: (context, index) {
-              final contact = _contacts[index];
+              final contact = _getFilteredContacts()[index];
               return Card(
                 margin: EdgeInsets.only(bottom: 1.h),
                 child: ListTile(
@@ -219,6 +239,12 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
                       Text(
                         contact['phone'] as String,
                         style: AppTheme.lightTheme.textTheme.bodySmall,
+                      ),
+                      Text(
+                        contact['email'] as String,
+                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       Container(
                         margin: EdgeInsets.only(top: 0.5.h),
@@ -474,5 +500,27 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
         ],
       ),
     );
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+    });
+  }
+
+  List<Map<String, dynamic>> _getFilteredContacts() {
+    if (_searchQuery.isEmpty) {
+      return _contacts;
+    }
+    
+    return _contacts.where((contact) {
+      final name = (contact['name'] as String).toLowerCase();
+      final phone = (contact['phone'] as String).toLowerCase();
+      final email = (contact['email'] as String).toLowerCase();
+      
+      return name.contains(_searchQuery) ||
+             phone.contains(_searchQuery) ||
+             email.contains(_searchQuery);
+    }).toList();
   }
 }

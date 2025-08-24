@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/user_service.dart';
 
 class RoleSpecificSettingsWidget extends StatefulWidget {
   final String userRole;
@@ -26,6 +27,7 @@ class _RoleSpecificSettingsWidgetState
   late String _privacyLevel;
   late bool _allowSelectorRequests;
   late bool _showOnlineStatus;
+  final UserService _userService = UserService();
 
   @override
   void initState() {
@@ -37,11 +39,51 @@ class _RoleSpecificSettingsWidgetState
     _showOnlineStatus = widget.userData["showOnlineStatus"] as bool? ?? true;
   }
 
-  void _updateData() {
+  Future<void> _updateData() async {
     widget.userData["searchRadius"] = _searchRadius.round();
     widget.userData["privacyLevel"] = _privacyLevel;
     widget.userData["allowSelectorRequests"] = _allowSelectorRequests;
-    widget.userData["showOnlineStatus"] = _showOnlineStatus;
+    
+    // Check if selector is changing online status
+    final oldOnlineStatus = widget.userData["showOnlineStatus"] as bool? ?? true;
+    final newOnlineStatus = _showOnlineStatus;
+    widget.userData["showOnlineStatus"] = newOnlineStatus;
+    
+    // If selector is going offline, pause all their candidates
+    if (widget.userRole == 'selector' && oldOnlineStatus && !newOnlineStatus) {
+      try {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final currentUser = authProvider.currentUserProfile;
+        if (currentUser != null) {
+          await _userService.pauseAllCandidatesForSelector(
+            selectorId: currentUser.id,
+          );
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Tüm adaylarınız otomatik olarak duraklatıldı'),
+                backgroundColor: AppTheme.warningColor,
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        print('Error pausing candidates: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Adaylar duraklatılırken hata oluştu'),
+              backgroundColor: AppTheme.errorColor,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
+    
     widget.onDataChanged();
   }
 
@@ -69,13 +111,13 @@ class _RoleSpecificSettingsWidgetState
         // Service Preferences
         _buildSettingTile(
           'Aktif Hizmet',
-          'Yeni adayları otomatik olarak görüntüle',
+          'Kapatıldığında adaylar sizi aramada göremez, otomatik duraklatılır',
           _showOnlineStatus,
-          (value) {
+          (value) async {
             setState(() {
               _showOnlineStatus = value;
             });
-            _updateData();
+            await _updateData();
           },
           'trending_up',
         ),
@@ -221,14 +263,14 @@ class _RoleSpecificSettingsWidgetState
     return Container(
       padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
-        color: AppTheme.secondaryLight,
+        color: value ? AppTheme.secondaryLight : Colors.grey.withOpacity(0.2),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
           CustomIconWidget(
             iconName: iconName,
-            color: AppTheme.lightTheme.primaryColor,
+            color: value ? AppTheme.lightTheme.primaryColor : Colors.grey,
             size: 20,
           ),
           SizedBox(width: 3.w),
@@ -236,12 +278,17 @@ class _RoleSpecificSettingsWidgetState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: AppTheme.lightTheme.textTheme.bodyMedium),
+                Text(
+                  title, 
+                  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                    color: value ? null : Colors.grey,
+                  ),
+                ),
                 SizedBox(height: 0.5.h),
                 Text(
                   subtitle,
                   style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textSecondaryLight,
+                    color: value ? AppTheme.textSecondaryLight : Colors.grey,
                   ),
                 ),
               ],

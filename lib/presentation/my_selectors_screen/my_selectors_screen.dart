@@ -572,6 +572,28 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     try {
       // Veritabanında durumu güncelle
       if (wasPaused) {
+        // Seçici kendi adayını aktifleştirmeye çalışıyorsa ve seçici offline ise
+        if (currentUser.role == UserRole.selector && !currentUser.isActive) {
+          Navigator.pop(context); // Modal'ı kapat
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Adayları aktifleştirmek için önce profil sayfasından aktif hizmeti başlatın'),
+              backgroundColor: AppTheme.warningColor,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'Profil Sayfası',
+                textColor: Colors.white,
+                onPressed: () {
+                  Navigator.pushNamed(context, '/profile-screen');
+                },
+              ),
+            ),
+          );
+          return;
+        }
+        
         // Aktifleştir
         await _userService.activateCandidateForSelector(
           selectorId: selectorId,
@@ -607,13 +629,30 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
         ),
       );
     } catch (e) {
-      // Hata durumunda UI state'i geri al
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('İşlem başarısız: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      Navigator.pop(context); // Modal'ı kapat
+      
+      // RLS policy hatası - seçici offline olduğunda
+      if (e.toString().contains('new row violates row-level security policy') || 
+          e.toString().contains('selector_candidates') ||
+          e.toString().contains('42501')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${selector['name']} artık aktif hizmet vermiyor. Arama sonuçlarında görünmez durumda.'),
+            backgroundColor: AppTheme.warningColor,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      } else {
+        // Diğer hatalar
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('İşlem başarısız: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 

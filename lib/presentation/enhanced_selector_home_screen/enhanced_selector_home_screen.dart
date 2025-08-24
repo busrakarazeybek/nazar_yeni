@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import '../../models/match_proposal.dart';
@@ -46,14 +47,17 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   final Map<String, Set<String>> _shownCardIdsPerCandidate = {};
   UserProfile? lastSwipedCandidate;
   bool _hasCheckedArguments = false;
-  bool _isRequestsExpanded = false; // Gelen istekler açık/kapalı durumu
+  // Gelen istekler kaldırıldı
   String? _pendingSelectedCandidateId; // Data yüklendikten sonra seçilecek candidate
+  int _pendingRequestsCount = 0; // Önerilerim sekmesi için bildirim sayısı
+  bool _isRequestsExpanded = false; // İstek listesi genişletilmiş mi
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
     _loadData();
+    _loadPendingRequestsCount();
   }
 
   @override
@@ -934,6 +938,23 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
     super.dispose();
   }
 
+  /// Önerilerim sekmesi için pending isteklerin sayısını yükler
+  Future<void> _loadPendingRequestsCount() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final count = prefs.getInt('pending_requests_count_${currentUser.id}') ?? 0;
+        setState(() {
+          _pendingRequestsCount = count;
+        });
+      }
+    } catch (e) {
+      print('Error loading pending requests count: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1124,16 +1145,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Bildirim bölümü ekle
-          Builder(
-            builder: (context) {
-              final authProvider = Provider.of<AuthProvider>(context, listen: false);
-              final currentUser = authProvider.currentUserProfile;
-              if (currentUser != null) {
-                return _buildIncomingRequestsSection(currentUser.id);
-              }
-              return SizedBox.shrink();
-            },
-          ),
+          // Gelen istekler kaldırıldı - Önerilerim sayfasında gösteriliyor
           SizedBox(height: 1.h),
           Row(
             children: [
@@ -1172,7 +1184,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
             ],
           ),
           SizedBox(height: 1.h),
-          Center(
+          Align(
+            alignment: Alignment.centerLeft,
             child: AnimatedBuilder(
               animation: _selectionAnimation,
               builder: (context, child) {
@@ -1288,10 +1301,37 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
           label: 'Ana Sayfa',
         ),
         BottomNavigationBarItem(
-          icon: CustomIconWidget(
-            iconName: 'list',
-            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-            size: 24,
+          icon: Stack(
+            children: [
+              CustomIconWidget(
+                iconName: 'list',
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                size: 24,
+              ),
+              if (_pendingRequestsCount > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: EdgeInsets.all(1.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_pendingRequestsCount',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
           label: 'Önerilerim',
         ),

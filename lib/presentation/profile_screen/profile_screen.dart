@@ -332,6 +332,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ageMax = temp;
         }
         
+        // Telefon numarası validasyonu
+        final originalPhone = userData['phone'] as String?;
+        String? validPhone = _validatePhoneNumber(originalPhone);
+        
+        // Telefon numarası geçersizse kullanıcıyı uyar
+        if (originalPhone != null && originalPhone.trim().isNotEmpty && validPhone == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Telefon numarası geçersiz format. Doğru format: 05XX XXX XX XX'),
+              backgroundColor: AppTheme.warningColor,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        
         // userData Map'inden değerleri al ve updateUserProfile'a gönder
         await authService.updateUserProfile(
           userId: currentUser.id,
@@ -339,10 +355,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           age: userData['age'] as int?,
           bio: userData['bio'] as String?,
           interests: (userData['interests'] as List?)?.cast<String>(),
-          location: currentUser.location, // mevcut location'ı koru
-          profession: currentUser.profession, // mevcut profession'ı koru
+          location: userData['location'] as String?, // güncellenen location'ı kullan
+          profession: userData['profession'] as String?, // güncellenen profession'ı kullan
           imageUrl: userData['profileImage'] as String?,
-          phone: currentUser.phone, // mevcut phone'u koru
+          phone: validPhone, // Doğrulanmış telefon numarası
+          isActive: currentUser.role == UserRole.selector 
+              ? (userData['showOnlineStatus'] as bool? ?? true)  // Seçiciler için online status
+              : null, // Adaylar için değiştirme
           preferredAgeMin: ageMin,
           preferredAgeMax: ageMax,
           preferredCities: (userData['preferredCities'] as List?)?.cast<String>(),
@@ -437,6 +456,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Türk telefon numarası formatını doğrular (05xx xxx xx xx)
+  String? _validatePhoneNumber(String? phone) {
+    if (phone == null || phone.trim().isEmpty) {
+      return null; // Boş telefon numarası geçerli
+    }
+    
+    // Sadece rakamları al
+    final digitsOnly = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    // Türk telefon numarası formatını kontrol et: 05xxxxxxxxx (11 haneli, 05 ile başlayan)
+    final phoneRegex = RegExp(r'^05[0-9]{9}$');
+    
+    if (digitsOnly.length == 11 && phoneRegex.hasMatch(digitsOnly)) {
+      // Geçerli format - formatla ve geri döndür
+      return '${digitsOnly.substring(0, 4)} ${digitsOnly.substring(4, 7)} ${digitsOnly.substring(7, 9)} ${digitsOnly.substring(9, 11)}';
+    } else {
+      // Geçersiz format - null döndür (veritabanına kaydedilmez)
+      print('Invalid phone format: $phone (digits: $digitsOnly)');
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     print("ProfileScreen build called");
@@ -490,6 +531,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             "language": "Türkçe", // örnek
             "searchRadius": 50, // örnek
             "privacyLevel": "Orta", // örnek
+            "allowSelectorRequests": true, // örnek
+            "showOnlineStatus": userProfile.isActive, // Seçici online/offline durumu
             // ProfileHeaderWidget için gerekli alanlar
             "role": userProfile.role.toString().split('.').last,
             "matchCount": 0, // Gerçek değer gerekirse service'den çekilebilir

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import '../../models/match_proposal.dart';
@@ -17,11 +18,13 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
   List<MatchProposal> _proposals = [];
   String? _errorMessage;
   List<Map<String, dynamic>> _notifications = [];
+  int _pendingRequestsCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadMyProposals();
+    _markNotificationsAsViewed(); // Sayfa açıldığında bildirimler görülmüş olarak işaretle
   }
 
   @override
@@ -58,6 +61,12 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
         _proposals = proposals;
         _notifications = notifications;
       });
+
+      // Pending isteklerin sayısını shared preferences'a kaydet
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('pending_requests_count_${currentUser.id}', _pendingRequestsCount);
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Öneriler yüklenirken hata oluştu: $e';
@@ -188,7 +197,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with notification count
+          // Header
           Row(
             children: [
               Icon(Icons.timeline, color: Color(0xFF667EEA), size: 20),
@@ -201,24 +210,6 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   color: Color(0xFF2D3748),
                 ),
               ),
-              Spacer(),
-              if (combinedItems.any((item) => item['isNew'] == true))
-                Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${combinedItems.where((item) => item['isNew'] == true).length}',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
             ],
           ),
           SizedBox(height: 2.h),
@@ -245,6 +236,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
 
   Widget _buildNotificationCard(Map<String, dynamic> notification) {
     final isNew = notification['isNew'] as bool;
+    final isPendingRequest = notification['type'] == 'pending_request';
+    
     return Container(
       padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
@@ -261,61 +254,115 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          CircleAvatar(
-            radius: 4.w,
-            backgroundImage: notification['user_image'] != null
-                ? NetworkImage(notification['user_image'])
-                : null,
-            backgroundColor: notification['type'] == 'accepted'
-                ? Colors.green.withOpacity(0.2)
-                : Colors.red.withOpacity(0.2),
-            child: notification['user_image'] == null
-                ? Icon(
-                    notification['type'] == 'accepted'
-                        ? Icons.check_circle
-                        : Icons.cancel,
-                    color: notification['type'] == 'accepted'
-                        ? Colors.green
-                        : Colors.red,
-                    size: 4.w,
-                  )
-                : null,
-          ),
-          SizedBox(width: 3.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  notification['message'] as String,
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: isNew ? FontWeight.w600 : FontWeight.normal,
-                    color: Color(0xFF2D3748),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 4.w,
+                backgroundImage: notification['user_image'] != null
+                    ? NetworkImage(notification['user_image'])
+                    : null,
+                backgroundColor: isPendingRequest
+                    ? Colors.orange.withOpacity(0.2)
+                    : notification['type'] == 'accepted'
+                        ? Colors.green.withOpacity(0.2)
+                        : Colors.red.withOpacity(0.2),
+                child: notification['user_image'] == null
+                    ? Icon(
+                        isPendingRequest
+                            ? Icons.person_add
+                            : notification['type'] == 'accepted'
+                                ? Icons.check_circle
+                                : Icons.cancel,
+                        color: isPendingRequest
+                            ? Colors.orange
+                            : notification['type'] == 'accepted'
+                                ? Colors.green
+                                : Colors.red,
+                        size: 4.w,
+                      )
+                    : null,
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      notification['message'] as String,
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: isNew ? FontWeight.w600 : FontWeight.normal,
+                        color: Color(0xFF2D3748),
+                      ),
+                    ),
+                    SizedBox(height: 0.5.h),
+                    Text(
+                      notification['time'] as String,
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        color: Color(0xFF718096),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isNew && !isPendingRequest)
+                Container(
+                  width: 2.w,
+                  height: 2.w,
+                  decoration: BoxDecoration(
+                    color: Color(0xFF667EEA),
+                    shape: BoxShape.circle,
                   ),
                 ),
-                SizedBox(height: 0.5.h),
-                Text(
-                  notification['time'] as String,
-                  style: TextStyle(
-                    fontSize: 10.sp,
-                    color: Color(0xFF718096),
+            ],
+          ),
+          
+          // Pending istekler için Onayla/Reddet butonları
+          if (isPendingRequest) ...[
+            SizedBox(height: 2.h),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _handleApproveRequest(notification),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 1.h),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Onayla',
+                      style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 2.w),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _handleRejectRequest(notification),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 1.h),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Reddet',
+                      style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          if (isNew)
-            Container(
-              width: 2.w,
-              height: 2.w,
-              decoration: BoxDecoration(
-                color: Color(0xFF667EEA),
-                shape: BoxShape.circle,
-              ),
-            ),
+          ],
         ],
       ),
     );
@@ -344,24 +391,6 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   color: Color(0xFF2D3748),
                 ),
               ),
-              Spacer(),
-              if (notifications.any((n) => n['isNew'] == true))
-                Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${notifications.where((n) => n['isNew'] == true).length}',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
             ],
           ),
           SizedBox(height: 1.h),
@@ -461,53 +490,78 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
 
       final client = await SupabaseService().client;
 
-      // Tüm istekleri al (debug için)
-      final allRequests = await client
-          .from('selector_candidate_requests')
-          .select('*')
-          .eq('from_user_id', currentUser.id);
-
-      print('DEBUG - Tüm istekler: $allRequests');
-
-      // Son 3 günde seçiciye gelen yanıtları al - tarihe göre sıralı (en yeni önce)
       final threeDaysAgo =
           DateTime.now().subtract(Duration(days: 3)).toIso8601String();
+
+      // 1. Seçiciye gelen PENDING istekleri al (yeni özellik)
+      final pendingRequests = await client
+          .from('selector_candidate_requests')
+          .select('*')
+          .eq('to_user_id', currentUser.id) // Seçiciye gelen istekler
+          .eq('status', 'pending')
+          .gte('created_at', threeDaysAgo)
+          .order('created_at', ascending: false)
+          .limit(10);
+
+      // 2. Son 3 günde seçiciye gelen yanıtları al (mevcut)  
       final responses = await client
           .from('selector_candidate_requests')
           .select('*')
-          .eq('from_user_id', currentUser.id)
+          .eq('from_user_id', currentUser.id) // Seçicinin gönderdiği istekler
           .inFilter('status', ['accepted', 'rejected'])
           .gte('created_at', threeDaysAgo)
           .order('created_at', ascending: false)
           .limit(20);
 
-      // Kullanıcı bilgilerini ayrı ayrı çek
-      final userIds =
-          responses.map((r) => r['to_user_id'] as String).toSet().toList();
-      final users = <String, Map<String, dynamic>>{};
+      // Tüm kullanıcı ID'lerini topla
+      final allUserIds = <String>[];
+      allUserIds.addAll(pendingRequests.map((r) => r['from_user_id'] as String));
+      allUserIds.addAll(responses.map((r) => r['to_user_id'] as String));
+      final uniqueUserIds = allUserIds.toSet().toList();
 
-      if (userIds.isNotEmpty) {
+      // Kullanıcı bilgilerini çek
+      final users = <String, Map<String, dynamic>>{};
+      if (uniqueUserIds.isNotEmpty) {
         final userProfiles = await client
             .from('user_profiles')
             .select('id, full_name, image_url')
-            .inFilter('id', userIds);
+            .inFilter('id', uniqueUserIds);
 
         for (final user in userProfiles) {
           users[user['id']] = user;
         }
       }
 
-      print('DEBUG - Filtrelenmiş yanıtlar: $responses');
-
       List<Map<String, dynamic>> notifications = [];
 
+      // Pending istekleri ekle (yeni)
+      for (final request in pendingRequests) {
+        final fromUserId = request['from_user_id'] as String;
+        final fromUser = users[fromUserId];
+
+        if (fromUser == null) continue;
+
+        final createdAt = DateTime.parse(request['created_at']);
+
+        notifications.add({
+          'type': 'pending_request',
+          'message': '${fromUser['full_name']} sizi seçici olarak eklemek istiyor.',
+          'time': _getTimeAgo(createdAt),
+          'created_at': createdAt,
+          'isNew': true, // Pending istekler her zaman yeni
+          'user_image': fromUser['image_url'],
+          'request_id': request['id'],
+          'from_user_name': fromUser['full_name'],
+        });
+      }
+
+      // Yanıtları ekle (mevcut)
       for (final response in responses) {
         final toUserId = response['to_user_id'] as String;
         final toUser = users[toUserId];
 
-        if (toUser == null) continue; // Skip if user not found
+        if (toUser == null) continue;
 
-        final relation = response['relation'] ?? 'Aday'; // Varsayılan değer
         final isAccepted = response['status'] == 'accepted';
         final createdAt = DateTime.parse(response['created_at']);
 
@@ -517,7 +571,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
               ? '${toUser['full_name']} isteğinizi kabul etti!'
               : '${toUser['full_name']} isteğinizi reddetti.',
           'time': _getTimeAgo(createdAt),
-          'created_at': createdAt, // Store actual DateTime for sorting
+          'created_at': createdAt,
           'isNew': DateTime.now().difference(createdAt).inHours < 24,
           'user_image': toUser['image_url'],
         });
@@ -527,15 +581,153 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       notifications.sort((a, b) {
         final dateA = a['created_at'] as DateTime;
         final dateB = b['created_at'] as DateTime;
-        return dateB.compareTo(dateA); // En yeni önce
+        return dateB.compareTo(dateA);
       });
 
-      print('DEBUG - Son bildirimler: $notifications');
+      // Pending isteklerin sayısını hesapla ve kaydet
+      setState(() {
+        _pendingRequestsCount = notifications.where((n) => n['type'] == 'pending_request').length;
+      });
 
       return notifications;
     } catch (e) {
       print('Error getting notifications: $e');
       return [];
+    }
+  }
+
+  Future<void> _handleApproveRequest(Map<String, dynamic> notification) async {
+    try {
+      final requestId = notification['request_id'] as String;
+      final fromUserName = notification['from_user_name'] as String;
+      
+      // Loading dialog göster
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 4.w),
+              Text('İstek onaylanıyor...'),
+            ],
+          ),
+        ),
+      );
+
+      final client = await SupabaseService().client;
+      
+      // İstek durumunu güncelle
+      await client
+          .from('selector_candidate_requests')
+          .update({'status': 'accepted'})
+          .eq('id', requestId);
+
+      // Gerçek ilişkiyi oluştur - candidate_home_screen'deki mantığı kullan
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        // İsteği veren aday ile seçici arasında ilişki kur
+        final requestDetails = await client
+            .from('selector_candidate_requests')
+            .select('from_user_id')
+            .eq('id', requestId)
+            .single();
+
+        await UserService().addCandidateToSelector(
+          selectorId: currentUser.id, // Mevcut kullanıcı (seçici)
+          candidateId: requestDetails['from_user_id'], // İsteği gönderen aday
+        );
+      }
+
+      // Loading dialog'ı kapat
+      Navigator.of(context).pop();
+      
+      // Başarı mesajı göster
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$fromUserName\'nın isteği onaylandı!'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Bildirimleri yenile
+      _loadMyProposals();
+
+    } catch (e) {
+      // Loading dialog'ı kapat (eğer açıksa)
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İstek onaylanırken hata oluştu: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleRejectRequest(Map<String, dynamic> notification) async {
+    try {
+      final requestId = notification['request_id'] as String;
+      final fromUserName = notification['from_user_name'] as String;
+      
+      // Loading dialog göster
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 4.w),
+              Text('İstek reddediliyor...'),
+            ],
+          ),
+        ),
+      );
+
+      final client = await SupabaseService().client;
+      
+      // İstek durumunu güncelle
+      await client
+          .from('selector_candidate_requests')
+          .update({'status': 'rejected'})
+          .eq('id', requestId);
+
+      // Loading dialog'ı kapat
+      Navigator.of(context).pop();
+      
+      // Bilgi mesajı göster
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$fromUserName\'nın isteği reddedildi.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Bildirimleri yenile
+      _loadMyProposals();
+
+    } catch (e) {
+      // Loading dialog'ı kapat (eğer açıksa)
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İstek reddedilirken hata oluştu: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -1169,6 +1361,20 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
         ),
       ),
     );
+  }
+
+  /// Bildirimler görüldü olarak işaretlenir (kırmızı nokta kaybolur)
+  Future<void> _markNotificationsAsViewed() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('pending_requests_count_${currentUser.id}', 0);
+      }
+    } catch (e) {
+      print('Error marking notifications as viewed: $e');
+    }
   }
 
   @override

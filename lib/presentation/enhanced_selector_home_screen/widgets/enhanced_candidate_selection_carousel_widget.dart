@@ -30,13 +30,19 @@ class _EnhancedCandidateSelectionCarouselState
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 8.h,
+      height: 7.h, // Daha küçük height
       child: widget.candidates.isEmpty
-          ? _buildAddCandidateButton()
+          ? Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: EdgeInsets.only(left: 4.w),
+                child: _buildAddCandidateButton(),
+              ),
+            )
           : ListView.builder(
               scrollDirection: Axis.horizontal,
-              physics: ClampingScrollPhysics(),
-              padding: EdgeInsets.only(left: 4.w), // Sol padding eklendi
+              physics: BouncingScrollPhysics(),
+              padding: EdgeInsets.only(left: 4.w, right: 4.w), // Sol ve sağ padding
               shrinkWrap: true,
               itemCount: widget.candidates.length + 1, // +1 for add button
               itemBuilder: (context, index) {
@@ -49,8 +55,8 @@ class _EnhancedCandidateSelectionCarouselState
                 return AnimatedContainer(
                   duration: Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
-                  width: 15.w, // Reduced width
-                  margin: EdgeInsets.zero, // No margin between profiles
+                  width: 15.w, // Daha kompakt genişlik
+                  margin: EdgeInsets.zero, // Profiller arası boşluk yok
                   child: GestureDetector(
                     onTap: () => widget.onCandidateSelected(candidate),
                     onLongPress: () => _showRemoveDialog(candidate),
@@ -60,8 +66,8 @@ class _EnhancedCandidateSelectionCarouselState
                   AnimatedContainer(
                     duration: Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
-                    width: 12.w, // Hep büyük boyut
-                    height: 12.w, // Hep büyük boyut
+                    width: isSelected ? 11.w : 9.w, // Seçili büyük, normal küçük
+                    height: isSelected ? 11.w : 9.w, // Seçili büyük, normal küçük
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -96,12 +102,12 @@ class _EnhancedCandidateSelectionCarouselState
                           : _buildDefaultAvatar(candidate, isSelected),
                     ),
                   ),
-                  SizedBox(height: 0.5.h),
+                  SizedBox(height: 0.3.h), // Daha az boşluk
                   AnimatedDefaultTextStyle(
                     duration: Duration(milliseconds: 300),
                     style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
-                      fontWeight: FontWeight.w600, // Hep kalın
-                      fontSize: 9.sp, // Hep büyük font
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontSize: isSelected ? 8.sp : 7.sp, // Seçili biraz büyük
                       color: isSelected
                           ? AppTheme.lightTheme.primaryColor
                           : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
@@ -143,7 +149,7 @@ class _EnhancedCandidateSelectionCarouselState
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
-            fontSize: 10.sp, // Hep büyük font
+            fontSize: isSelected ? 9.sp : 7.sp, // Seçili büyük, normal küçük
           ),
         ),
       ),
@@ -199,7 +205,8 @@ class _EnhancedCandidateSelectionCarouselState
 
   Widget _buildAddCandidateButton() {
     return Container(
-      margin: EdgeInsets.zero,
+      width: 15.w, // Diğer profiller ile aynı genişlik
+      margin: EdgeInsets.zero, // Profiller arası boşluk yok
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -210,8 +217,8 @@ class _EnhancedCandidateSelectionCarouselState
             child: AnimatedContainer(
               duration: Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              width: 10.w,
-              height: 10.w,
+              width: 9.w, // Daha küçük boyut
+              height: 9.w, // Daha küçük boyut
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
@@ -231,16 +238,16 @@ class _EnhancedCandidateSelectionCarouselState
               child: Icon(
                 Icons.add,
                 color: AppTheme.lightTheme.primaryColor,
-                size: 5.w,
+                size: 4.w, // Daha küçük icon
               ),
             ),
           ),
-          SizedBox(height: 0.5.h),
+          SizedBox(height: 0.3.h), // Daha az boşluk
           Text(
             'Aday Ekle',
             style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
               fontWeight: FontWeight.w500,
-              fontSize: 8.sp,
+              fontSize: 7.sp, // Daha küçük text
               color: AppTheme.lightTheme.primaryColor,
             ),
           ),

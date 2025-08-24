@@ -659,4 +659,42 @@ class UserService {
       return <String>{};
     }
   }
+
+  /// Pause all candidates for a selector when they go offline
+  Future<void> pauseAllCandidatesForSelector({
+    required String selectorId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      await client
+          .from('selector_candidates')
+          .update({'status': 'paused'})
+          .eq('selector_id', selectorId)
+          .neq('status', 'removed'); // Don't affect removed candidates
+      
+      print('Paused all candidates for selector: $selectorId');
+    } catch (error) {
+      print('Error pausing all candidates for selector: $error');
+      throw Exception('Failed to pause all candidates: $error');
+    }
+  }
+
+  /// Reactivate all candidates for a selector when they go online
+  Future<void> reactivateAllCandidatesForSelector({
+    required String selectorId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      await client
+          .from('selector_candidates')
+          .update({'status': 'active'})
+          .eq('selector_id', selectorId)
+          .eq('status', 'paused'); // Only reactivate previously paused candidates
+      
+      print('Reactivated all candidates for selector: $selectorId');
+    } catch (error) {
+      print('Error reactivating all candidates for selector: $error');
+      throw Exception('Failed to reactivate all candidates: $error');
+    }
+  }
 }
