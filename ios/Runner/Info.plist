@@ -48,5 +48,7 @@
         <key>NSAllowsArbitraryLoads</key>
         <true />
     </dict>
+	<key>NSContactsUsageDescription</key>
+	<string>Bu uygulama kişilerinizi görücü olarak davet etmek için rehber erişimine ihtiyaç duyar.</string>
 </dict>
 </plist>

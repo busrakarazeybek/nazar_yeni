@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/sms_service.dart';
 
 class InviteSelectorWidget extends StatefulWidget {
   final Function(String name, String relationship) onInviteSent;
@@ -33,40 +36,10 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     "İş Arkadaşı"
   ];
 
-  final List<Map<String, dynamic>> _contacts = [
-    {
-      "name": "Ayşe Demir",
-      "phone": "+90 532 123 4567",
-      "email": "ayse.demir@email.com",
-      "relationship": "Aile",
-      "avatar":
-          "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=400",
-    },
-    {
-      "name": "Mehmet Özkan",
-      "phone": "+90 533 987 6543",
-      "email": "mehmet.ozkan@email.com",
-      "relationship": "Arkadaş",
-      "avatar":
-          "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=400",
-    },
-    {
-      "name": "Fatma Yılmaz",
-      "phone": "+90 534 555 1234",
-      "email": "fatma.yilmaz@email.com",
-      "relationship": "Aile",
-      "avatar":
-          "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=400",
-    },
-    {
-      "name": "Ali Kaya",
-      "phone": "+90 535 777 8888",
-      "email": "ali.kaya@email.com",
-      "relationship": "İş Arkadaşı",
-      "avatar":
-          "https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=400",
-    },
-  ];
+  List<Contact> _phoneContacts = [];
+  List<Contact> _filteredContacts = [];
+  bool _isLoadingContacts = false;
+  bool _hasContactsPermission = false;
 
   @override
   void initState() {
@@ -75,6 +48,7 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     _searchController.addListener(_onSearchChanged);
     _messageController.text =
         "Merhaba! Seni Goricu Matchmaker uygulamasında görücüm olarak davet etmek istiyorum. Bu uygulama sayesinde benim için uygun eş adaylarını bulup önerebilirsin. Kabul edersen çok memnun olurum.";
+    _checkContactsPermission();
   }
 
   @override
@@ -212,73 +186,7 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
 
         // Contacts List
         Expanded(
-          child: ListView.builder(
-            padding: EdgeInsets.symmetric(horizontal: 4.w),
-            itemCount: _getFilteredContacts().length,
-            itemBuilder: (context, index) {
-              final contact = _getFilteredContacts()[index];
-              return Card(
-                margin: EdgeInsets.only(bottom: 1.h),
-                child: ListTile(
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(6.w),
-                    child: CustomImageWidget(
-                      imageUrl: contact['avatar'] as String,
-                      width: 12.w,
-                      height: 12.w,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  title: Text(
-                    contact['name'] as String,
-                    style: AppTheme.lightTheme.textTheme.titleMedium,
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        contact['phone'] as String,
-                        style: AppTheme.lightTheme.textTheme.bodySmall,
-                      ),
-                      Text(
-                        contact['email'] as String,
-                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                          color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      Container(
-                        margin: EdgeInsets.only(top: 0.5.h),
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 2.w, vertical: 0.5.h),
-                        decoration: BoxDecoration(
-                          color: AppTheme
-                              .lightTheme.colorScheme.primaryContainer
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          contact['relationship'] as String,
-                          style: AppTheme.lightTheme.textTheme.labelSmall
-                              ?.copyWith(
-                            color: AppTheme.lightTheme.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  trailing: ElevatedButton(
-                    onPressed: () => _sendInviteToContact(contact),
-                    style: ElevatedButton.styleFrom(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
-                      minimumSize: Size(0, 0),
-                    ),
-                    child: const Text("Davet Et"),
-                  ),
-                ),
-              );
-            },
-          ),
+          child: _buildContactsList(),
         ),
       ],
     );
@@ -449,31 +357,6 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
             _emailController.text.trim().isNotEmpty);
   }
 
-  void _sendInviteToContact(Map<String, dynamic> contact) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Davet Gönder"),
-        content: Text(
-            "${contact['name']} kişisine görücü daveti göndermek istediğinizden emin misiniz?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("İptal"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Close bottom sheet
-              widget.onInviteSent(
-                  contact['name'] as String, contact['relationship'] as String);
-            },
-            child: const Text("Gönder"),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _sendManualInvite() {
     if (!_canSendInvite()) return;
@@ -502,25 +385,388 @@ class _InviteSelectorWidgetState extends State<InviteSelectorWidget>
     );
   }
 
+  /// Kontaklar izni kontrolü
+  Future<void> _checkContactsPermission() async {
+    final permission = await Permission.contacts.status;
+    setState(() {
+      _hasContactsPermission = permission.isGranted;
+    });
+    
+    if (_hasContactsPermission) {
+      _loadContacts();
+    }
+  }
+
+  /// Kontaklar iznini iste
+  Future<void> _requestContactsPermission() async {
+    final permission = await Permission.contacts.request();
+    setState(() {
+      _hasContactsPermission = permission.isGranted;
+    });
+    
+    if (_hasContactsPermission) {
+      _loadContacts();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Kişilere erişim izni gerekli'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    }
+  }
+
+  /// Telefon kontaklarını yükle
+  Future<void> _loadContacts() async {
+    setState(() {
+      _isLoadingContacts = true;
+    });
+
+    try {
+      final contacts = await FlutterContacts.getContacts(
+        withProperties: true,
+        withPhoto: false,
+      );
+      
+      // Sadece telefon numarası olan kontakları filtrele
+      final filteredContacts = contacts.where((contact) {
+        return contact.phones.isNotEmpty && 
+               contact.displayName.isNotEmpty;
+      }).toList();
+
+      setState(() {
+        _phoneContacts = filteredContacts;
+        _filteredContacts = filteredContacts;
+        _isLoadingContacts = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingContacts = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Kişiler yüklenirken hata oluştu: $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    }
+  }
+
+  /// Kontak arama
+  void _filterContacts(String query) {
+    if (query.isEmpty) {
+      setState(() {
+        _filteredContacts = _phoneContacts;
+      });
+    } else {
+      final filtered = _phoneContacts.where((contact) {
+        return contact.displayName.toLowerCase().contains(query.toLowerCase()) ||
+               contact.phones.any((phone) => phone.number.contains(query));
+      }).toList();
+      
+      setState(() {
+        _filteredContacts = filtered;
+      });
+    }
+  }
+
   void _onSearchChanged() {
     setState(() {
       _searchQuery = _searchController.text.toLowerCase();
     });
+    _filterContacts(_searchController.text);
   }
 
-  List<Map<String, dynamic>> _getFilteredContacts() {
-    if (_searchQuery.isEmpty) {
-      return _contacts;
+  /// Kontaklar listesi widget'ı
+  Widget _buildContactsList() {
+    if (!_hasContactsPermission) {
+      return _buildPermissionRequest();
     }
     
-    return _contacts.where((contact) {
-      final name = (contact['name'] as String).toLowerCase();
-      final phone = (contact['phone'] as String).toLowerCase();
-      final email = (contact['email'] as String).toLowerCase();
+    if (_isLoadingContacts) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: AppTheme.lightTheme.primaryColor,
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'Kişiler yükleniyor...',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (_filteredContacts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CustomIconWidget(
+              iconName: 'contacts',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              size: 64,
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              _phoneContacts.isEmpty ? 'Hiç kişi bulunamadı' : 'Arama sonucu bulunamadı',
+              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return ListView.builder(
+      padding: EdgeInsets.symmetric(horizontal: 4.w),
+      itemCount: _filteredContacts.length,
+      itemBuilder: (context, index) {
+        final contact = _filteredContacts[index];
+        final primaryPhone = contact.phones.isNotEmpty ? contact.phones.first.number : '';
+        
+        return Card(
+          margin: EdgeInsets.only(bottom: 1.h),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: AppTheme.lightTheme.primaryColor,
+              child: Text(
+                contact.displayName.isNotEmpty ? contact.displayName[0].toUpperCase() : '?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            title: Text(
+              contact.displayName,
+              style: AppTheme.lightTheme.textTheme.titleMedium,
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (primaryPhone.isNotEmpty)
+                  Text(
+                    primaryPhone,
+                    style: AppTheme.lightTheme.textTheme.bodySmall,
+                  ),
+                if (contact.emails.isNotEmpty)
+                  Text(
+                    contact.emails.first.address,
+                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            trailing: ElevatedButton(
+              onPressed: () => _sendInviteToPhoneContact(contact),
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+                minimumSize: Size(0, 0),
+              ),
+              child: const Text("Davet Et"),
+            ),
+          ),
+        );
+      },
+    );
+  }
+  
+  /// İzin isteme widget'ı
+  Widget _buildPermissionRequest() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(4.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CustomIconWidget(
+              iconName: 'contacts',
+              color: AppTheme.lightTheme.primaryColor,
+              size: 64,
+            ),
+            SizedBox(height: 3.h),
+            Text(
+              'Kişilerinize Erişim',
+              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppTheme.lightTheme.primaryColor,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'Kişilerinizi görücü olarak davet etmek için telefon rehberinize erişim iznine ihtiyacımız var.',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 4.h),
+            ElevatedButton.icon(
+              onPressed: _requestContactsPermission,
+              icon: CustomIconWidget(
+                iconName: 'person_add',
+                color: Colors.white,
+                size: 20,
+              ),
+              label: Text('İzin Ver'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.lightTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Telefon kontağından davet gönder
+  void _sendInviteToPhoneContact(Contact contact) {
+    final primaryPhone = contact.phones.isNotEmpty ? contact.phones.first.number : '';
+    
+    if (primaryPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bu kişinin telefon numarası bulunamadı'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
+
+    // Yakınlık derecesi seçim dialog'u
+    _showRelationshipSelectionDialog(contact.displayName, primaryPhone);
+  }
+
+  /// Yakınlık derecesi seçim dialog'u
+  void _showRelationshipSelectionDialog(String name, String phone) {
+    String selectedRelationship = _selectedRelationship;
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Yakınlık Derecesi'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('$name ile yakınlık derecenizi seçin:'),
+              SizedBox(height: 2.h),
+              DropdownButtonFormField<String>(
+                value: selectedRelationship,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Yakınlık Derecesi',
+                ),
+                items: _relationships.map((relationship) {
+                  return DropdownMenuItem(
+                    value: relationship,
+                    child: Text(relationship),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setDialogState(() {
+                    selectedRelationship = value!;
+                  });
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('İptal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _sendSMSInvitation(name, phone, selectedRelationship);
+              },
+              child: Text('Davet Gönder'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// SMS davet gönder
+  Future<void> _sendSMSInvitation(String name, String phone, String relationship) async {
+    final smsService = SMSService();
+    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Kullanıcı bilgisi bulunamadı'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
+
+    // Loading dialog göster
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 4.w),
+            Text('SMS gönderiliyor...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final success = await smsService.sendInvitationSMS(
+        phoneNumber: phone,
+        senderName: currentUser.fullName ?? 'Görücü Matchmaker',
+        relationship: relationship,
+      );
+
+      // Loading dialog'u kapat
+      Navigator.of(context).pop();
+
+      if (success) {
+        widget.onInviteSent(name, relationship);
+        Navigator.pop(context);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$name kişisine SMS davet başarıyla gönderildi'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('SMS gönderilirken hata oluştu. Lütfen tekrar deneyin.'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    } catch (e) {
+      // Loading dialog'u kapat
+      Navigator.of(context).pop();
       
-      return name.contains(_searchQuery) ||
-             phone.contains(_searchQuery) ||
-             email.contains(_searchQuery);
-    }).toList();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('SMS gönderilirken hata oluştu: $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    }
   }
 }

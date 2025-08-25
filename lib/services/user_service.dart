@@ -697,4 +697,46 @@ class UserService {
       throw Exception('Failed to reactivate all candidates: $error');
     }
   }
+
+  /// Update relationship degree for a candidate
+  Future<void> updateRelationshipDegree({
+    required String selectorId,
+    required String candidateId,
+    required String relationshipDegree,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      await client
+          .from('selector_candidates')
+          .update({'relationship_degree': relationshipDegree})
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId);
+      
+      print('Updated relationship degree for candidate: $candidateId to: $relationshipDegree');
+    } catch (error) {
+      print('Error updating relationship degree: $error');
+      throw Exception('Failed to update relationship degree: $error');
+    }
+  }
+
+  /// Get relationship degree for a candidate
+  Future<String?> getRelationshipDegree({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client
+          .from('selector_candidates')
+          .select('relationship_degree')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId)
+          .single();
+      
+      return response['relationship_degree'] as String?;
+    } catch (error) {
+      print('Error getting relationship degree: $error');
+      return null;
+    }
+  }
 }

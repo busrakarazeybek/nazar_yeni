@@ -51,13 +51,16 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
   String? _pendingSelectedCandidateId; // Data yüklendikten sonra seçilecek candidate
   int _pendingRequestsCount = 0; // Önerilerim sekmesi için bildirim sayısı
   bool _isRequestsExpanded = false; // İstek listesi genişletilmiş mi
+  bool _showRelationshipDegree = false; // Yakınlık derecesi gösterimini kontrol et
+  Map<String, String> _candidateRelationshipDegrees = {}; // Adayların yakınlık dereceleri
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
+    _loadToggleState();
     _loadData();
-    _loadPendingRequestsCount();
+    _loadInitialPendingRequestsCount();
   }
 
   @override
@@ -141,6 +144,9 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         _matchService.getPendingMatches(currentUser.id),
         _matchProposalService.getSelectorProposals(currentUser.id),
       ]);
+
+      // Yakınlık derecelerini yükle
+      await _loadRelationshipDegrees(currentUser.id, results[0] as List<UserProfile>);
 
       setState(() {
         _assignedCandidates = results[0] as List<UserProfile>;
@@ -945,13 +951,134 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       final currentUser = authProvider.currentUserProfile;
       if (currentUser != null) {
         final prefs = await SharedPreferences.getInstance();
-        final count = prefs.getInt('pending_requests_count_${currentUser.id}') ?? 0;
+        var count = prefs.getInt('pending_requests_count_${currentUser.id}') ?? 0;
+        final badgeManuallyCleared = prefs.getBool('badge_manually_cleared_${currentUser.id}') ?? false;
+        
+        // Eğer badge manuel temizlenmişse count'u 0 yap
+        if (badgeManuallyCleared) {
+          count = 0;
+        }
+        
         setState(() {
           _pendingRequestsCount = count;
         });
       }
     } catch (e) {
       print('Error loading pending requests count: $e');
+    }
+  }
+
+  /// İlk yüklemede pending requests sayısını database'den kontrol et
+  Future<void> _loadInitialPendingRequestsCount() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        var count = prefs.getInt('pending_requests_count_${currentUser.id}') ?? 0;
+        
+        // Badge manuel olarak temizlenmişse, database'i kontrol etme
+        final badgeManuallyCleared = prefs.getBool('badge_manually_cleared_${currentUser.id}') ?? false;
+        
+        // Eğer manuel temizlenmediyse ve sayı yoksa, gerçek pending requests sayısını kontrol et
+        if (!badgeManuallyCleared && count == 0) {
+          try {
+            final client = await SupabaseService().client;
+            final response = await client
+                .from('selector_candidate_requests')
+                .select()
+                .eq('to_user_id', currentUser.id)
+                .eq('status', 'pending');
+            
+            count = response.length;
+            if (count > 0) {
+              // Gerçek pending request varsa SharedPreferences'a kaydet
+              await prefs.setInt('pending_requests_count_${currentUser.id}', count);
+            }
+          } catch (e) {
+            print('Error checking real pending requests: $e');
+          }
+        }
+        
+        // Manuel temizlendiyse count'u 0'da bırak
+        if (badgeManuallyCleared) {
+          count = 0;
+        }
+        
+        setState(() {
+          _pendingRequestsCount = count;
+        });
+      }
+    } catch (e) {
+      print('Error loading initial pending requests count: $e');
+    }
+  }
+
+  /// Bildirim badge'ini temizle
+  Future<void> _clearNotificationBadge() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('pending_requests_count_${currentUser.id}', 0);
+      }
+    } catch (e) {
+      print('Error clearing notification badge: $e');
+    }
+  }
+
+  /// Toggle state'ini yükle
+  Future<void> _loadToggleState() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final showRelationshipDegree = prefs.getBool('show_relationship_degree_${currentUser.id}') ?? false;
+        setState(() {
+          _showRelationshipDegree = showRelationshipDegree;
+        });
+      }
+    } catch (e) {
+      print('Error loading toggle state: $e');
+    }
+  }
+
+  /// Toggle state'ini kaydet
+  Future<void> _saveToggleState() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('show_relationship_degree_${currentUser.id}', _showRelationshipDegree);
+      }
+    } catch (e) {
+      print('Error saving toggle state: $e');
+    }
+  }
+
+  /// Yakınlık derecelerini veritabanından yükle
+  Future<void> _loadRelationshipDegrees(String selectorId, List<UserProfile> candidates) async {
+    try {
+      final Map<String, String> degrees = {};
+      
+      for (final candidate in candidates) {
+        final degree = await _userService.getRelationshipDegree(
+          selectorId: selectorId,
+          candidateId: candidate.id,
+        );
+        if (degree != null && degree.isNotEmpty) {
+          degrees[candidate.id] = degree;
+        }
+      }
+      
+      setState(() {
+        _candidateRelationshipDegrees = degrees;
+      });
+    } catch (e) {
+      print('Error loading relationship degrees: $e');
     }
   }
 
@@ -1171,6 +1298,28 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
                   ),
                 ),
               ),
+              // Yakınlık derecesi toggle butonu
+              IconButton(
+                onPressed: () async {
+                  setState(() {
+                    _showRelationshipDegree = !_showRelationshipDegree;
+                  });
+                  await _saveToggleState();
+                },
+                icon: Icon(
+                  _showRelationshipDegree ? Icons.person : Icons.favorite,
+                  size: 20,
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: _showRelationshipDegree
+                      ? AppTheme.lightTheme.primaryColor.withValues(alpha: 0.2)
+                      : AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1),
+                  foregroundColor: AppTheme.lightTheme.primaryColor,
+                ),
+                tooltip: _showRelationshipDegree 
+                    ? 'İsimleri Göster' 
+                    : 'Yakınlık Derecelerini Göster',
+              ),
               // Refresh butonu ekle
               IconButton(
                 onPressed: _refreshData,
@@ -1199,6 +1348,8 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
                           onCandidateSelected: _onCandidateSelected,
                           onRemoveCandidate: _removeCandidate,
                           onAddCandidate: _showAddCandidateModal,
+                          showRelationshipDegree: _showRelationshipDegree,
+                          relationshipDegrees: _candidateRelationshipDegrees,
                         ),
                 );
               },
@@ -1274,12 +1425,22 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
             }
             break;
           case 1:
-            Navigator.pushNamed(context, '/my-selections-screen');
+            // Önerilerim sayfasına git - badge temizleme işlemi my-selections-screen'de yapılacak
+            await Navigator.pushNamed(context, '/my-selections-screen');
+            // Geri dönüldüğünde badge'i temizle (my-selections-screen ziyaret edildiği için)
+            setState(() {
+              _pendingRequestsCount = 0;
+            });
             break;
           case 2:
             // Adaylarım sayfasına git ve dönüşte her zaman refresh yap
             await Navigator.pushNamed(context, '/my-selectors-screen');
             await _refreshData(); // Her zaman refresh yap
+            // Yakınlık derecelerini de yeniden yükle
+            final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+            if (currentUser != null) {
+              await _loadRelationshipDegrees(currentUser.id, _assignedCandidates);
+            }
             break;
           case 3:
             Navigator.pushNamed(context, '/profile-screen');
@@ -1417,11 +1578,190 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       builder: (context) => _AddCandidateModal(),
     );
     if (result != null) {
-      await _addCandidate(result);
+      // Aday seçildi, şimdi yakınlık derecesi sor
+      final relationshipDegree = await _showRelationshipDegreeDialog(result);
+      if (relationshipDegree != null) {
+        await _addCandidate(result, relationshipDegree);
+      }
     }
   }
 
-  Future<void> _addCandidate(UserProfile candidate) async {
+  /// Yakınlık derecesi dialog'u
+  Future<String?> _showRelationshipDegreeDialog(UserProfile candidate) async {
+    final controller = TextEditingController();
+    String selectedOption = '';
+    
+    final relationshipOptions = [
+      'Kardeş',
+      'Kuzen',
+      'Akraba',
+      'Aile Dostu',
+      'Komşu',
+      'İş Arkadaşı',
+      'Okul Arkadaşı',
+      'Yakın Arkadaş',
+      'Arkadaş',
+      'Tanıdık',
+    ];
+    
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(2.w),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: CustomIconWidget(
+                  iconName: 'favorite',
+                  color: AppTheme.lightTheme.primaryColor,
+                  size: 20,
+                ),
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Text(
+                  'Yakınlık Derecesi',
+                  style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Container(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${candidate.fullName} ile yakınlık derecenizi seçin:',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+                SizedBox(height: 3.h),
+                
+                // Hızlı seçenekler
+                Text(
+                  'Hızlı Seçenekler:',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 1.h),
+                Wrap(
+                  spacing: 2.w,
+                  runSpacing: 1.h,
+                  children: relationshipOptions.map((option) {
+                    final isSelected = selectedOption == option;
+                    return FilterChip(
+                      label: Text(option),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setDialogState(() {
+                          selectedOption = selected ? option : '';
+                          controller.text = selectedOption;
+                        });
+                      },
+                      backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+                      selectedColor: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
+                      checkmarkColor: AppTheme.lightTheme.primaryColor,
+                      labelStyle: TextStyle(
+                        color: isSelected 
+                            ? AppTheme.lightTheme.primaryColor
+                            : AppTheme.lightTheme.colorScheme.onSurface,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                
+                SizedBox(height: 3.h),
+                
+                // Manuel giriş
+                Text(
+                  'Veya kendiniz yazın:',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 1.h),
+                TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    hintText: 'Yakınlık derecesi girin...',
+                    prefixIcon: Icon(
+                      Icons.edit,
+                      color: AppTheme.lightTheme.primaryColor,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: AppTheme.lightTheme.primaryColor,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedOption = '';
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: Text(
+                'İptal',
+                style: TextStyle(
+                  color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                final degree = controller.text.trim();
+                if (degree.isNotEmpty) {
+                  Navigator.pop(context, degree);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Lütfen yakınlık derecesi girin'),
+                      backgroundColor: AppTheme.warningColor,
+                    ),
+                  );
+                }
+              },
+              icon: Icon(Icons.save),
+              label: Text('Kaydet'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.lightTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addCandidate(UserProfile candidate, String relationshipDegree) async {
     try {
       final currentUser =
           Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
@@ -1438,17 +1778,18 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
         return;
       }
 
-      // Adaya istek gönder
+      // Adaya istek gönder ve yakınlık derecesini dahil et
       final client = await SupabaseService().client;
       await client.from('selector_candidate_requests').insert({
         'from_user_id': currentUser.id,
         'to_user_id': candidate.id,
         'type': 'candidate', // ADAY İSTEĞİ
         'status': 'pending',
+        'relation': relationshipDegree, // Yakınlık derecesi eklendi
       });
       await _refreshData();
       _showSuccessMessage(
-        '${candidate.fullName} kişisine adaylık isteği gönderildi, onay bekleniyor!',
+        '${candidate.fullName} kişisine adaylık isteği gönderildi ($relationshipDegree olarak), onay bekleniyor!',
       );
     } catch (e) {
       _showErrorMessage('Aday eklenemedi: $e');

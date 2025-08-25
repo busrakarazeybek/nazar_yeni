@@ -25,6 +25,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
     super.initState();
     _loadMyProposals();
     _markNotificationsAsViewed(); // Sayfa açıldığında bildirimler görülmüş olarak işaretle
+    _loadPendingRequestsCount(); // Pending requests count'u yükle
   }
 
   @override
@@ -1364,6 +1365,22 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
   }
 
   /// Bildirimler görüldü olarak işaretlenir (kırmızı nokta kaybolur)
+  Future<void> _loadPendingRequestsCount() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final count = prefs.getInt('pending_requests_count_${currentUser.id}') ?? 0;
+        setState(() {
+          _pendingRequestsCount = count;
+        });
+      }
+    } catch (e) {
+      print('Error loading pending requests count: $e');
+    }
+  }
+
   Future<void> _markNotificationsAsViewed() async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -1371,6 +1388,11 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       if (currentUser != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('pending_requests_count_${currentUser.id}', 0);
+        // Flag ekle: Bu badge manuel olarak temizlendi
+        await prefs.setBool('badge_manually_cleared_${currentUser.id}', true);
+        setState(() {
+          _pendingRequestsCount = 0; // UI'ı da güncelle
+        });
       }
     } catch (e) {
       print('Error marking notifications as viewed: $e');
@@ -1501,20 +1523,21 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
                   color: AppTheme.lightTheme.colorScheme.primary,
                   size: 24,
                 ),
-                if (_notifications.any((n) => n['isNew'] == true))
+                // My selections sayfasındayken badge gözükmesin
+                if (false)
                   Positioned(
-                    right: 0,
-                    top: 0,
+                    right: -2,
+                    top: -2,
                     child: Container(
                       padding: EdgeInsets.all(1.w),
                       decoration: BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
+                        color: AppTheme.errorColor,
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.white, width: 1),
                       ),
                       constraints: BoxConstraints(minWidth: 16, minHeight: 16),
                       child: Text(
-                        '${_notifications.where((n) => n['isNew'] == true).length}',
+                        '$_pendingRequestsCount',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,

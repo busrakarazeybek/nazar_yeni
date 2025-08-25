@@ -27,7 +27,13 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
   List<Map<String, dynamic>> _filteredSelectors = [];
   bool _isLoading = false;
   String _searchQuery = '';
+  
+  // Yakınlık derecesi için
+  String _selectedRelationshipDegree = '';
+  bool _isEditingRelationship = false;
+  final TextEditingController _relationshipController = TextEditingController();
   int _newMatchesCount = 0;
+  int _pendingRequestsCount = 0; // Önerilerim badge için
 
   @override
   void initState() {
@@ -36,14 +42,49 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     // Load data after build to prevent double rendering
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadMockData();
+      _loadPendingRequestsCount();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Badge count'u yenile (diğer sayfalardan döndüğümüzde)
+    _loadPendingRequestsCount();
   }
 
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _relationshipController.dispose();
     super.dispose();
+  }
+
+  /// Yakınlık derecelerini yükle
+  Future<void> _loadRelationshipDegrees(List<Map<String, dynamic>> selectors, UserProfile currentUser) async {
+    for (var selector in selectors) {
+      try {
+        String selectorId, candidateId;
+        if (currentUser.role == UserRole.selector) {
+          selectorId = currentUser.id;
+          candidateId = selector['id'] as String;
+        } else {
+          selectorId = selector['id'] as String;
+          candidateId = currentUser.id;
+        }
+        
+        final relationshipDegree = await _userService.getRelationshipDegree(
+          selectorId: selectorId,
+          candidateId: candidateId,
+        );
+        
+        selector['relationshipDegree'] = relationshipDegree ?? '';
+      } catch (e) {
+        print('Error loading relationship degree for ${selector['id']}: $e');
+        selector['relationshipDegree'] = '';
+      }
+    }
   }
 
   Future<void> _loadMockData() async {
@@ -126,6 +167,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             "location": candidateData['location'],
             "profession": candidateData['profession'],
             "interests": candidateData['interests'],
+            "relationshipDegree": "", // Will be loaded separately
           };
         }).toList();
       } else if (currentUser.role == UserRole.candidate) {
@@ -200,9 +242,13 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             "location": selector.location,
             "profession": selector.profession,
             "interests": selector.interests,
+            "relationshipDegree": "", // Will be loaded separately
           };
         }).toList();
       }
+
+      // Yakınlık derecelerini yükle
+      await _loadRelationshipDegrees(loadedSelectors, currentUser);
 
       // No fallback data - show empty state for new users
 
@@ -438,6 +484,11 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                       style: AppTheme.lightTheme.textTheme.bodyMedium,
                     ),
                     SizedBox(height: 3.h),
+                    
+                    // Yakınlık Derecesi Bölümü
+                    _buildRelationshipDegreeSection(selector),
+                    SizedBox(height: 3.h),
+                    
                     Text(
                       "İstatistikler",
                       style: AppTheme.lightTheme.textTheme.titleMedium,
@@ -741,6 +792,28 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     );
   }
 
+  /// Önerilerim badge için pending requests sayısını yükle
+  Future<void> _loadPendingRequestsCount() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null && currentUser.role == UserRole.selector) {
+        final prefs = await SharedPreferences.getInstance();
+        final count = prefs.getInt('pending_requests_count_${currentUser.id}') ?? 0;
+        final badgeManuallyCleared = prefs.getBool('badge_manually_cleared_${currentUser.id}') ?? false;
+        
+        // Eğer badge manuel temizlenmişse count'u 0 yap
+        final finalCount = badgeManuallyCleared ? 0 : count;
+        
+        setState(() {
+          _pendingRequestsCount = finalCount;
+        });
+      }
+    } catch (e) {
+      print('Error loading pending requests count in my_selectors_screen: $e');
+    }
+  }
+
   String _getScreenTitle() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final role = authProvider.currentUserProfile?.role;
@@ -855,6 +928,29 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                     ),
                   ),
                 ),
+              if (isSelector && _pendingRequestsCount > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: EdgeInsets.all(1.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_pendingRequestsCount',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
             ],
           ),
           activeIcon: Stack(
@@ -879,6 +975,29 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                     constraints: BoxConstraints(minWidth: 16, minHeight: 16),
                     child: Text(
                       '$_newMatchesCount',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              if (isSelector && _pendingRequestsCount > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: EdgeInsets.all(1.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$_pendingRequestsCount',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -1010,18 +1129,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                 ],
               ),
       ),
-      floatingActionButton: _filteredSelectors.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: _showInviteSelector,
-              icon: CustomIconWidget(
-                iconName: 'person_add',
-                color: AppTheme
-                    .lightTheme.floatingActionButtonTheme.foregroundColor!,
-                size: 20,
-              ),
-              label: Text(_getInviteButtonText()),
-            )
-          : null,
+      // FloatingActionButton kaldırıldı
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
@@ -1042,5 +1150,341 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
         ],
       ),
     );
+  }
+
+  /// Yakınlık derecesi bölümü oluştur
+  Widget _buildRelationshipDegreeSection(Map<String, dynamic> selector) {
+    final relationshipDegree = selector['relationshipDegree'] as String? ?? '';
+    
+    return Container(
+      padding: EdgeInsets.all(4.w),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.lightTheme.primaryColor.withOpacity(0.05),
+            AppTheme.lightTheme.primaryColor.withOpacity(0.02),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(2.w),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: CustomIconWidget(
+                  iconName: 'favorite',
+                  color: AppTheme.lightTheme.primaryColor,
+                  size: 20,
+                ),
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Yakınlık Derecesi',
+                      style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.lightTheme.primaryColor,
+                      ),
+                    ),
+                    SizedBox(height: 0.5.h),
+                    Text(
+                      relationshipDegree.isEmpty 
+                          ? 'Henüz belirlenmedi' 
+                          : relationshipDegree,
+                      style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                        color: relationshipDegree.isEmpty 
+                            ? AppTheme.lightTheme.colorScheme.onSurfaceVariant 
+                            : AppTheme.lightTheme.colorScheme.onSurface,
+                        fontWeight: relationshipDegree.isEmpty 
+                            ? FontWeight.normal 
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => _showRelationshipDegreeDialog(selector),
+                icon: Icon(
+                  relationshipDegree.isEmpty ? Icons.add_circle : Icons.edit,
+                  color: AppTheme.lightTheme.primaryColor,
+                  size: 24,
+                ),
+                tooltip: relationshipDegree.isEmpty ? 'Yakınlık Derecesi Ekle' : 'Düzenle',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Yakınlık derecesi düzenleme dialogu
+  void _showRelationshipDegreeDialog(Map<String, dynamic> selector) {
+    final currentDegree = selector['relationshipDegree'] as String? ?? '';
+    _relationshipController.text = currentDegree;
+    
+    final relationshipOptions = [
+      'Kardeş',
+      'Kuzen',
+      'Akraba',
+      'Aile Dostu',
+      'Komşu',
+      'İş Arkadaşı',
+      'Okul Arkadaşı',
+      'Yakın Arkadaş',
+      'Arkadaş',
+      'Tanıdık',
+    ];
+    
+    String selectedOption = currentDegree.isNotEmpty && relationshipOptions.contains(currentDegree) 
+        ? currentDegree 
+        : '';
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(2.w),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: CustomIconWidget(
+                  iconName: 'favorite',
+                  color: AppTheme.lightTheme.primaryColor,
+                  size: 20,
+                ),
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Text(
+                  'Yakınlık Derecesi',
+                  style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Container(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${selector['name']} ile yakınlık derecenizi seçin:',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                ),
+                SizedBox(height: 3.h),
+                
+                // Hızlı seçenekler
+                Text(
+                  'Hızlı Seçenekler:',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 1.h),
+                Wrap(
+                  spacing: 2.w,
+                  runSpacing: 1.h,
+                  children: relationshipOptions.map((option) {
+                    final isSelected = selectedOption == option;
+                    return FilterChip(
+                      label: Text(option),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setDialogState(() {
+                          selectedOption = selected ? option : '';
+                          _relationshipController.text = selectedOption;
+                        });
+                      },
+                      backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+                      selectedColor: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
+                      checkmarkColor: AppTheme.lightTheme.primaryColor,
+                      labelStyle: TextStyle(
+                        color: isSelected 
+                            ? AppTheme.lightTheme.primaryColor
+                            : AppTheme.lightTheme.colorScheme.onSurface,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                
+                SizedBox(height: 3.h),
+                
+                // Manuel giriş
+                Text(
+                  'Veya kendiniz yazın:',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 1.h),
+                TextField(
+                  controller: _relationshipController,
+                  decoration: InputDecoration(
+                    hintText: 'Yakınlık derecesi girin...',
+                    prefixIcon: Icon(
+                      Icons.edit,
+                      color: AppTheme.lightTheme.primaryColor,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: AppTheme.lightTheme.primaryColor,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedOption = '';
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'İptal',
+                style: TextStyle(
+                  color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final degree = _relationshipController.text.trim();
+                if (degree.isNotEmpty) {
+                  // Önce yakınlık derecesi dialog'unu kapat
+                  Navigator.of(context).pop();
+                  // Sonra kişi detay popup'ını da kapat
+                  Navigator.of(context).pop();
+                  
+                  // Ana sayfa state'ini güncelle
+                  _updateSelectorRelationshipDegree(selector, degree);
+                  
+                  // Başarı bildirimini göster
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Yakınlık derecesi güncellendi: $degree'),
+                      backgroundColor: AppTheme.successColor,
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  
+                  // Arka planda veritabanını güncelle
+                  await _updateRelationshipDegreeInDatabase(selector, degree);
+                } else {
+                  // Boş değer girildiyse sadece dialog'u kapat
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Lütfen yakınlık derecesi girin'),
+                      backgroundColor: AppTheme.warningColor,
+                    ),
+                  );
+                }
+              },
+              icon: Icon(Icons.save),
+              label: Text('Kaydet'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.lightTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Ana sayfa state'ini güncelle
+  void _updateSelectorRelationshipDegree(Map<String, dynamic> selector, String degree) {
+    setState(() {
+      selector['relationshipDegree'] = degree;
+      
+      // Filtered list'i de güncelle
+      final index = _filteredSelectors.indexWhere((s) => s['id'] == selector['id']);
+      if (index != -1) {
+        _filteredSelectors[index]['relationshipDegree'] = degree;
+      }
+      
+      // All selectors list'i de güncelle
+      final allIndex = _allSelectors.indexWhere((s) => s['id'] == selector['id']);
+      if (allIndex != -1) {
+        _allSelectors[allIndex]['relationshipDegree'] = degree;
+      }
+    });
+  }
+
+  /// Yakınlık derecesini veritabanında güncelle
+  Future<void> _updateRelationshipDegreeInDatabase(Map<String, dynamic> selector, String degree) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser == null) return;
+      
+      String selectorId, candidateId;
+      if (currentUser.role == UserRole.selector) {
+        selectorId = currentUser.id;
+        candidateId = selector['id'] as String;
+      } else {
+        selectorId = selector['id'] as String;
+        candidateId = currentUser.id;
+      }
+      
+      await _userService.updateRelationshipDegree(
+        selectorId: selectorId,
+        candidateId: candidateId,
+        relationshipDegree: degree,
+      );
+      
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Veritabanı güncellenirken hata: $e'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }

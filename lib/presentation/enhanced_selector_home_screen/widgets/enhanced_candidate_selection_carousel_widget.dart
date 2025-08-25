@@ -10,6 +10,8 @@ class EnhancedCandidateSelectionCarousel extends StatefulWidget {
   final ValueChanged<UserProfile> onCandidateSelected;
   final ValueChanged<UserProfile> onRemoveCandidate;
   final VoidCallback? onAddCandidate;
+  final bool showRelationshipDegree;
+  final Map<String, String> relationshipDegrees;
 
   const EnhancedCandidateSelectionCarousel({
     super.key,
@@ -18,6 +20,8 @@ class EnhancedCandidateSelectionCarousel extends StatefulWidget {
     required this.onCandidateSelected,
     required this.onRemoveCandidate,
     this.onAddCandidate,
+    this.showRelationshipDegree = false,
+    this.relationshipDegrees = const {},
   });
 
   @override
@@ -113,7 +117,9 @@ class _EnhancedCandidateSelectionCarouselState
                           : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                     ),
                     child: Text(
-                      candidate.fullName.split(' ').first,
+                      widget.showRelationshipDegree 
+                          ? _getRelationshipDegreeForCandidate(candidate)
+                          : candidate.fullName.split(' ').first,
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -254,6 +260,18 @@ class _EnhancedCandidateSelectionCarouselState
         ],
       ),
     );
+  }
+
+  /// Candidate için yakınlık derecesi getir
+  String _getRelationshipDegreeForCandidate(UserProfile candidate) {
+    // Veritabanından gelen yakınlık derecesini kullan
+    final degree = widget.relationshipDegrees[candidate.id];
+    if (degree != null && degree.isNotEmpty) {
+      return degree;
+    }
+    
+    // Eğer yakınlık derecesi yoksa ismin ilk kelimesini göster
+    return candidate.fullName.split(' ').first;
   }
 
   void _showAddCandidateDialog() {

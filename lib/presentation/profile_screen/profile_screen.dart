@@ -28,6 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final String _userRole =
       'Candidate'; // Mock role - can be 'Selector' or 'Candidate'
   int _newMatchesCount = 0;
+  int _pendingRequestsCount = 0; // Önerilerim badge için
   Map<String, dynamic> userData = {};
 
   // Mock user data
@@ -69,6 +70,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadMatchesCount();
+    _loadPendingRequestsCount();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Badge count'u yenile (diğer sayfalardan döndüğümüzde)
+    _loadPendingRequestsCount();
   }
 
   Future<void> _loadMatchesCount() async {
@@ -99,6 +108,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Önerilerim badge için pending requests sayısını yükle
+  Future<void> _loadPendingRequestsCount() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      if (currentUser != null && currentUser.role == UserRole.selector) {
+        final prefs = await SharedPreferences.getInstance();
+        final count = prefs.getInt('pending_requests_count_${currentUser.id}') ?? 0;
+        final badgeManuallyCleared = prefs.getBool('badge_manually_cleared_${currentUser.id}') ?? false;
+        
+        // Eğer badge manuel temizlenmişse count'u 0 yap
+        final finalCount = badgeManuallyCleared ? 0 : count;
+        
+        setState(() {
+          _pendingRequestsCount = finalCount;
+        });
+      }
+    } catch (e) {
+      print('Error loading pending requests count in profile_screen: $e');
+    }
+  }
+
   Future<void> _markMatchesAsViewed() async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -121,8 +152,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final userProfile = authProvider.currentUserProfile;
     final isSelector = userProfile?.role == UserRole.selector;
-    print(
-        'DEBUG Profile Screen: User role: ${userProfile?.role}, isSelector: $isSelector');
 
     return [
       BottomNavigationBarItem(
@@ -159,6 +188,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   constraints: BoxConstraints(minWidth: 16, minHeight: 16),
                   child: Text(
                     '$_newMatchesCount',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            if (isSelector && _pendingRequestsCount > 0)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  padding: EdgeInsets.all(1.w),
+                  decoration: BoxDecoration(
+                    color: AppTheme.errorColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white, width: 1),
+                  ),
+                  constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text(
+                    '$_pendingRequestsCount',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -601,7 +653,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Builder(
                 builder: (context) {
                   try {
-                    print("Building ProfileHeaderWidget with userData keys: ${userData.keys}");
                     return ProfileHeaderWidget(
                       userData: userData,
                       onImageChanged: _onDataChanged,
