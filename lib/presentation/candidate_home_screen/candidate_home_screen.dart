@@ -806,14 +806,14 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     final currentUser = authProvider.currentUserProfile;
 
     return ListView(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.all(2.w),
       children: [
         if (currentUser != null) _buildIncomingRequestsSection(currentUser.id),
         // Always show selectors section (Görücü profile is always added)
         if (!_isLoading) ...[
           // My Selectors Section with responsive layout
           _buildMySelectorsSection(),
-          SizedBox(height: 3.h),
+          SizedBox(height: 1.h),
           // Suggested Candidates Section or Görücü Explanation
           _selectedSelector?.id == 'gorocu_profile_special'
               ? _buildGorocuExplanationSection()
@@ -931,7 +931,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     final gorocuProposals = _filteredProposals;
     
     return Container(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.all(2.w),
       decoration: BoxDecoration(
         color: AppTheme.lightTheme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -982,7 +982,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 ),
               ],
             ),
-            SizedBox(height: 3.h),
+            SizedBox(height: 1.h),
             
             // Explanation
             Container(
@@ -1057,7 +1057,6 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
             
             ..._buildStepByStepGuide(),
             
-            SizedBox(height: 3.h),
           ],
           
           // Show proposals or info screen based on Görücü proposals availability
@@ -1288,45 +1287,32 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with title and add button
+          // Header with title only
           Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(2.w),
-                          decoration: BoxDecoration(
-                            color: AppTheme.lightTheme.primaryColor.withAlpha(
-                              26,
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: CustomIconWidget(
-                            iconName: 'people',
-                            color: AppTheme.lightTheme.primaryColor,
-                            size: 5.w,
-                          ),
-                        ),
-                        SizedBox(width: 2.w),
-                        Text(
-                          'Görücülerim',
-                          style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.lightTheme.colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+              Container(
+                padding: EdgeInsets.all(2.w),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.primaryColor.withAlpha(26),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: CustomIconWidget(
+                  iconName: 'people',
+                  color: AppTheme.lightTheme.primaryColor,
+                  size: 5.w,
                 ),
               ),
-              _buildAddSelectorButton(),
+              SizedBox(width: 2.w),
+              Text(
+                'Görücülerim',
+                style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.lightTheme.colorScheme.onSurface,
+                ),
+              ),
             ],
           ),
+          SizedBox(height: 0.5.h),
           // Selectors horizontal list
           AnimatedBuilder(
             animation: _selectionAnimation,
@@ -1342,9 +1328,10 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     );
   }
 
-  Widget _buildAddSelectorButton() {
+  Widget _buildAddSelectorCard() {
     return Container(
-      height: 8.h,
+      width: 20.w,
+      margin: EdgeInsets.only(right: 3.w),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1354,42 +1341,31 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               _handleAddSelector();
             },
             child: Container(
-              width: 20.w,
-              height: 5.h,
+              width: 12.w,
+              height: 12.w,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                color: AppTheme.lightTheme.primaryColor.withAlpha(26),
+                shape: BoxShape.circle,
                 border: Border.all(
-                  color: AppTheme.lightTheme.primaryColor.withOpacity(0.6),
+                  color: AppTheme.lightTheme.primaryColor,
                   width: 2,
-                  style: BorderStyle.solid,
                 ),
-                color: AppTheme.lightTheme.primaryColor.withOpacity(0.1),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.lightTheme.primaryColor.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  ),
-                ],
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.person_add_rounded,
-                    color: AppTheme.lightTheme.primaryColor,
-                    size: 18,
-                  ),
-                  SizedBox(width: 1.w),
-                  Text(
-                    'Seçici Ekle',
-                    style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.lightTheme.primaryColor,
-                    ),
-                  ),
-                ],
+              child: Icon(
+                Icons.add,
+                color: AppTheme.lightTheme.primaryColor,
+                size: 8.w,
               ),
+            ),
+          ),
+          SizedBox(height: 1.h),
+          Text(
+            'Görücü\nEkle',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 8.sp,
+              color: AppTheme.lightTheme.colorScheme.onSurface.withAlpha(180),
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -1399,13 +1375,18 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   Widget _buildSelectorsHorizontalList() {
     return SizedBox(
-      height: 15.h, // Enhanced selector style height
+      height: 10.h, // Enhanced selector style height
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: 4.w),
-        itemCount: _selectors.length,
+        padding: EdgeInsets.symmetric(horizontal: 1.w),
+        itemCount: _selectors.length + 1, // +1 for add button
         itemBuilder: (context, index) {
+          // If it's the last item, show add button
+          if (index == _selectors.length) {
+            return _buildAddSelectorCard();
+          }
+          
           final selector = _selectors[index];
           final isSelected = _selectedSelector?.id == selector.id;
           final pendingCount =
@@ -1702,7 +1683,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (isSelected) ...[
-                  SizedBox(height: 0.5.h),
+                  SizedBox(height: 0.2.h),
                   Container(
                     width: 4.w,
                     height: 0.5.h,
@@ -1915,7 +1896,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUser = authProvider.currentUserProfile;
     return ListView(
-      padding: EdgeInsets.all(4.w),
+      padding: EdgeInsets.all(2.w),
       children: [
         SuggestedCandidatesSection(
           proposals: pendingProposals,
@@ -1958,7 +1939,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               color: AppTheme.errorColor,
               size: 64.w,
             ),
-            SizedBox(height: 3.h),
+            SizedBox(height: 1.h),
             Text(
               'Hata',
               style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
@@ -1971,7 +1952,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               style: AppTheme.lightTheme.textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 1.5.h),
             ElevatedButton.icon(
               onPressed: _loadData,
               icon: CustomIconWidget(
@@ -2020,7 +2001,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 ],
               ),
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 1.5.h),
 
             // Title
             Text(
@@ -2042,11 +2023,11 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: 3.h),
+            SizedBox(height: 1.h),
 
             // Benefits
             Container(
-              padding: EdgeInsets.all(4.w),
+              padding: EdgeInsets.all(2.w),
               decoration: BoxDecoration(
                 color: AppTheme.lightTheme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
@@ -2085,7 +2066,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 ],
               ),
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 1.5.h),
 
             // Call to Action
             SizedBox(

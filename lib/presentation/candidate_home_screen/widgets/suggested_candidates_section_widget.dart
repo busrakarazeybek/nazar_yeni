@@ -227,9 +227,9 @@ class _SuggestedCandidatesSectionState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSectionHeader(),
-            SizedBox(height: 2.h),
+            SizedBox(height: 1.h),
             SizedBox(
-              height: 68.h,
+              height: 70.h,
               child: CustomSwipeableCard(
                 cards: _localProposals
                     .map((proposal) => _buildCandidateCard(proposal))
@@ -351,22 +351,25 @@ class _SuggestedCandidatesSectionState
         isDirectCandidate ? proposal.targetCandidateBio : proposal.candidateBio;
 
     return Container(
-      margin: EdgeInsets.only(bottom: 2.h),
-      width: 85.w,
-      height: 75.h, // Daha yüksek dikdörtgen
+      width: 90.w,  // Daha geniş, neredeyse tam ekran
+      height: 75.h, // Daha yüksek, dating app tarzı
       decoration: BoxDecoration(
         color: AppTheme.lightTheme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20.w),
+        borderRadius: BorderRadius.circular(24), // Daha büyük radius
         boxShadow: [
+          // Ana gölge - daha soft ve doğal
           BoxShadow(
-            color: AppTheme.shadowLight,
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+            spreadRadius: 0,
           ),
+          // Ambient gölge
           BoxShadow(
-            color: AppTheme.shadowLight.withValues(alpha: 0.3),
-            blurRadius: 40,
-            offset: const Offset(0, 16),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 60,
+            offset: const Offset(0, 20),
+            spreadRadius: -8,
           ),
         ],
       ),
@@ -374,7 +377,7 @@ class _SuggestedCandidatesSectionState
         children: [
           // Background image
           ClipRRect(
-            borderRadius: BorderRadius.circular(20.w),
+            borderRadius: BorderRadius.circular(24),
             child: CustomImageWidget(
               imageUrl: otherCandidateImage,
               fit: BoxFit.cover,
@@ -401,213 +404,209 @@ class _SuggestedCandidatesSectionState
               ),
             ),
           ),
-          // Gradient overlay
+          // Gradient overlay - Tinder style
           Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20.w),
+              borderRadius: BorderRadius.circular(24),
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withValues(alpha: 0.1),
-                  Colors.black.withValues(alpha: 0.8),
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.2),
+                  Colors.black.withValues(alpha: 0.9),
                 ],
-                stops: const [0.0, 0.6, 1.0],
+                stops: const [0.0, 0.3, 0.7, 1.0],
               ),
             ),
           ),
-          // Nazar boncuğu emojisi (sağ üst köşede)
-          if (_nazerBoncuguPressed.contains(proposal.id))
-            Positioned(
-              top: 2.w,
-              right: 2.w,
-              child: Container(
-                padding: EdgeInsets.all(2.w),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  '🧿',
-                  style: TextStyle(fontSize: 8.w),
+          // Nazar boncuğu butonu (sağ üst köşe)
+          Positioned(
+            top: 4.w,
+            right: 4.w,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: FloatingActionButton(
+                heroTag: "nazar_${proposal.id}",
+                mini: true,
+                onPressed: () => _handleNazarBoncugu(proposal),
+                backgroundColor: Colors.blue[700],
+                elevation: 0,
+                child: Icon(
+                  Icons.remove_red_eye,
+                  color: Colors.white,
+                  size: 5.w,
                 ),
               ),
             ),
-          // Nazar mesajı (üst orta)
-          if (proposal.nazarFromUserName != null && proposal.nazarSentAt != null)
+          ),
+          // About dropdown button - top left corner  
+          if (otherCandidateBio != null && otherCandidateBio!.isNotEmpty)
             Positioned(
               top: 4.w,
               left: 4.w,
-              right: 4.w,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.blue[700]!.withValues(alpha: 0.9),
-                      Colors.blue[600]!.withValues(alpha: 0.9),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(8.w),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+              child: GestureDetector(
+                onTap: () => _showAboutDialog(otherCandidateName, otherCandidateBio!),
+                child: Container(
+                  padding: EdgeInsets.all(2.w),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 1,
                     ),
-                  ],
+                  ),
+                  child: Icon(
+                    Icons.info_outline,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    size: 20,
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              ),
+            ),
+          // Profile information - centered name with details below
+          Positioned(
+            top: 45.h, // Biraz daha aşağı taşındı
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Name and Age - centered
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('🧿', style: TextStyle(fontSize: 4.w)),
+                    Text(
+                      otherCandidateName.split(' ').first, // Only first name
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32.sp, // Büyük font size
+                        fontWeight: FontWeight.w700, // Extra bold
+                        letterSpacing: -0.5,
+                      ),
+                    ),
                     SizedBox(width: 2.w),
-                    Expanded(
-                      child: Text(
-                        '${proposal.nazarFromUserName} size nazar değmesin dedi',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10.sp,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
+                    // Yaş bilgisi varsa göster (simüle edilmiş)
+                    Text(
+                      '${20 + (proposal.id.hashCode % 15)}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7), // Daha transparan
+                        fontSize: 32.sp, // Same size as name
+                        fontWeight: FontWeight.w400, // Regular weight
+                        letterSpacing: -0.5,
                       ),
                     ),
                   ],
                 ),
-              ),
+                // Location and Profession - centered and smaller
+                SizedBox(height: 1.h),
+                Column(
+                  children: [
+                    // Lokasyon (simüle edilmiş)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.location_on,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          size: 16,
+                        ),
+                        SizedBox(width: 1.w),
+                        Text(
+                          _getSimulatedLocation(proposal.id),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 0.2.h),
+                    // Meslek (simüle edilmiş)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.work,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          size: 16,
+                        ),
+                        SizedBox(width: 1.w),
+                        Text(
+                          _getSimulatedProfession(proposal.id),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
-          // Profile information
+          ),
+          // Bottom interest tags only
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
             child: Container(
-              padding: EdgeInsets.all(4.w),
+              padding: EdgeInsets.all(6.w),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(20.w),
-                  bottomRight: Radius.circular(20.w),
-                ),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.3),
-                  ],
+                  bottomLeft: Radius.circular(24),
+                  bottomRight: Radius.circular(24),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // İsim ve genişletme butonu
-                  Row(
-                    children: [
-                      Expanded(
+                  // Interest tags - much smaller
+                  Wrap(
+                    spacing: 1.w,
+                    runSpacing: 0.5.h,
+                    children: _getSimulatedHobbies(proposal.id).take(5).map((interest) {
+                      return Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 1.5.w,
+                          vertical: 0.3.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.3),
+                            width: 0.8,
+                          ),
+                        ),
                         child: Text(
-                          otherCandidateName,
-                          style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                offset: const Offset(0, 1),
-                                blurRadius: 3,
-                                color: Colors.black.withValues(alpha: 0.5),
-                              ),
-                            ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            print('Dropdown butonu tıklandı - ID: ${proposal.id}');
-                            print('Mevcut durum: ${_expandedCards.contains(proposal.id)}');
-                            setState(() {
-                              if (_expandedCards.contains(proposal.id)) {
-                                _expandedCards.remove(proposal.id);
-                                print('Kart kapatıldı');
-                              } else {
-                                _expandedCards.add(proposal.id);
-                                print('Kart açıldı');
-                              }
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(4.w),
-                          child: Container(
-                            padding: EdgeInsets.all(2.w),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(4.w),
-                            ),
-                            child: Icon(
-                              _expandedCards.contains(proposal.id)
-                                  ? Icons.keyboard_arrow_up
-                                  : Icons.keyboard_arrow_down,
-                              color: Colors.white,
-                              size: 7.w,
-                            ),
+                          interest,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 8.sp,
+                            fontWeight: FontWeight.w300,
                           ),
                         ),
-                      ),
-                    ],
+                      );
+                    }).toList(),
                   ),
-                  
-                  // Kısa bio
-                  if (otherCandidateBio != null && otherCandidateBio!.isNotEmpty) ...[
-                    SizedBox(height: 0.5.h),
-                    Text(
-                      otherCandidateBio!,
-                      style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.white70,
-                      ),
-                      maxLines: _expandedCards.contains(proposal.id) ? null : 2,
-                      overflow: _expandedCards.contains(proposal.id) 
-                          ? TextOverflow.visible 
-                          : TextOverflow.ellipsis,
-                    ),
-                  ],
-                  
-                  // Genişletilmiş detaylar
-                  if (_expandedCards.contains(proposal.id)) ...[
-                    SizedBox(height: 1.h),
-                    _buildExpandedDetails(proposal, isDirectCandidate),
-                    SizedBox(height: 1.h),
-                    // Debug: Kapatma butonu
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _expandedCards.remove(proposal.id);
-                          });
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red.withValues(alpha: 0.7),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-                        ),
-                        child: Text('Kapat', style: TextStyle(fontSize: 10.sp)),
-                      ),
-                    ),
-                  ],
-                  
-                  SizedBox(height: 2.h),
-                  // Action buttons
-                  _buildEnhancedActionButtons(proposal),
                 ],
               ),
             ),
@@ -1205,5 +1204,46 @@ class _SuggestedCandidatesSectionState
     final hobbyCount = 2 + (id.hashCode % 4); // 2-5 hobi
     final startIndex = id.hashCode % (allHobbies.length - hobbyCount);
     return allHobbies.sublist(startIndex, startIndex + hobbyCount);
+  }
+
+  void _showAboutDialog(String candidateName, String bio) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          '$candidateName Hakkında',
+          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Container(
+          constraints: BoxConstraints(maxHeight: 40.h),
+          child: SingleChildScrollView(
+            child: Text(
+              bio,
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                fontSize: 14.sp,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Kapat',
+              style: TextStyle(
+                color: AppTheme.lightTheme.primaryColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
