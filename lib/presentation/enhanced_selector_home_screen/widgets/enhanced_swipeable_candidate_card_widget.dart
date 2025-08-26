@@ -85,21 +85,25 @@ class _EnhancedSwipeableCandidateCardState
     final compatibilityScore = _calculateCompatibilityScore();
 
     return Container(
-      width: 85.w,
-      height: 55.h,
+      width: 90.w,  // Daha geniş, neredeyse tam ekran
+      height: 75.h, // Daha yüksek, dating app tarzı
       decoration: BoxDecoration(
         color: AppTheme.lightTheme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(6.w),
+        borderRadius: BorderRadius.circular(24), // Daha büyük radius
         boxShadow: [
+          // Ana gölge - daha soft ve doğal
           BoxShadow(
-            color: AppTheme.shadowLight,
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+            spreadRadius: 0,
           ),
+          // Ambient gölge
           BoxShadow(
-            color: AppTheme.shadowLight.withValues(alpha: 0.3),
-            blurRadius: 40,
-            offset: const Offset(0, 16),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 60,
+            offset: const Offset(0, 20),
+            spreadRadius: -8,
           ),
         ],
       ),
@@ -107,7 +111,7 @@ class _EnhancedSwipeableCandidateCardState
         children: [
           // Background image
           ClipRRect(
-            borderRadius: BorderRadius.circular(6.w),
+            borderRadius: BorderRadius.circular(24),
             child: CustomImageWidget(
               imageUrl: widget.candidate.imageUrl,
               fit: BoxFit.cover,
@@ -134,209 +138,179 @@ class _EnhancedSwipeableCandidateCardState
               ),
             ),
           ),
-          // Gradient overlay
+          // Gradient overlay - Tinder style
           Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6.w),
+              borderRadius: BorderRadius.circular(24),
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withValues(alpha: 0.1),
-                  Colors.black.withValues(alpha: 0.8),
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.2),
+                  Colors.black.withValues(alpha: 0.9),
                 ],
-                stops: const [0.0, 0.6, 1.0],
+                stops: const [0.0, 0.3, 0.7, 1.0],
               ),
             ),
           ),
-          // Compatibility indicator
-          if (widget.selectedCandidate != null)
+          // Profile information - centered name with details below
+          Positioned(
+            top: 50.h, // Ortada konumlandır
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Name and Age - centered
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      widget.candidate.fullName.split(' ').first, // Only first name
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32.sp, // Büyük font size
+                        fontWeight: FontWeight.w700, // Extra bold
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    SizedBox(width: 2.w),
+                    if (widget.candidate.age != null)
+                      Text(
+                        '${widget.candidate.age}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7), // Daha transparan
+                          fontSize: 32.sp, // Same size as name
+                          fontWeight: FontWeight.w400, // Regular weight
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                  ],
+                ),
+                // Location and Profession - centered and smaller, like in reference image
+                SizedBox(height: 1.h),
+                Column(
+                  children: [
+                    if (widget.candidate.location != null)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 16, // Daha büyük icon
+                          ),
+                          SizedBox(width: 1.w),
+                          Text(
+                            widget.candidate.location!,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 11.sp, // Çok küçük
+                              fontWeight: FontWeight.w400,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    if (widget.candidate.profession != null) ...[
+                      SizedBox(height: 0.2.h),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.work,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 16, // Daha büyük icon
+                          ),
+                          SizedBox(width: 1.w),
+                          Text(
+                            widget.candidate.profession!,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 11.sp, // Çok küçük
+                              fontWeight: FontWeight.w400,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // About dropdown button - top right corner
+          if (widget.candidate.bio != null && widget.candidate.bio!.isNotEmpty)
             Positioned(
               top: 4.w,
               right: 4.w,
-              child: AnimatedBuilder(
-                animation: _compatibilityAnimation,
-                builder: (context, child) {
-                  return Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 3.w,
-                      vertical: 1.h,
+              child: GestureDetector(
+                onTap: () => _showAboutDialog(),
+                child: Container(
+                  padding: EdgeInsets.all(2.w),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 1,
                     ),
-                    decoration: BoxDecoration(
-                      color: _getCompatibilityColor(compatibilityScore)
-                          .withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(6.w),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CustomIconWidget(
-                          iconName: 'favorite',
-                          color: Colors.white,
-                          size: 3.w,
-                        ),
-                        SizedBox(width: 1.w),
-                        Text(
-                          '${(compatibilityScore * _compatibilityAnimation.value).round()}%',
-                          style: AppTheme.lightTheme.textTheme.labelMedium
-                              ?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                  ),
+                  child: Icon(
+                    Icons.info_outline,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    size: 20,
+                  ),
+                ),
               ),
             ),
-          // Profile information
+          // Bottom interest tags only
           Positioned(
-            bottom: 2.h,
+            bottom: 0,
             left: 0,
             right: 0,
             child: Container(
-              padding: EdgeInsets.all(4.w),
+              padding: EdgeInsets.all(6.w),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(6.w),
-                  bottomRight: Radius.circular(6.w),
-                ),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.3),
-                  ],
+                  bottomLeft: Radius.circular(24),
+                  bottomRight: Radius.circular(24),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.candidate.fullName,
-                          style: AppTheme.lightTheme.textTheme.headlineSmall
-                              ?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                offset: const Offset(0, 1),
-                                blurRadius: 3,
-                                color: Colors.black.withValues(alpha: 0.5),
-                              ),
-                            ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (widget.candidate.age != null)
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 2.w,
-                            vertical: 0.5.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4.w),
-                          ),
-                          child: Text(
-                            '${widget.candidate.age}',
-                            style: AppTheme.lightTheme.textTheme.titleMedium
-                                ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (widget.candidate.profession != null) ...[
-                    SizedBox(height: 0.5.h),
-                    Row(
-                      children: [
-                        CustomIconWidget(
-                          iconName: 'work',
-                          color: Colors.white70,
-                          size: 4.w,
-                        ),
-                        SizedBox(width: 1.w),
-                        Expanded(
-                          child: Text(
-                            widget.candidate.profession!,
-                            style: AppTheme.lightTheme.textTheme.bodyMedium
-                                ?.copyWith(
-                              color: Colors.white70,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (widget.candidate.location != null) ...[
-                    SizedBox(height: 0.5.h),
-                    Row(
-                      children: [
-                        CustomIconWidget(
-                          iconName: 'location_on',
-                          color: Colors.white70,
-                          size: 4.w,
-                        ),
-                        SizedBox(width: 1.w),
-                        Expanded(
-                          child: Text(
-                            widget.candidate.location!,
-                            style: AppTheme.lightTheme.textTheme.bodyMedium
-                                ?.copyWith(
-                              color: Colors.white70,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  // Interest tags - much smaller
                   if (widget.candidate.interests != null &&
                       widget.candidate.interests!.isNotEmpty) ...[
-                    SizedBox(height: 1.h),
                     Wrap(
                       spacing: 1.w,
                       runSpacing: 0.5.h,
                       children:
-                          widget.candidate.interests!.take(3).map((interest) {
+                          widget.candidate.interests!.take(5).map((interest) {
                         return Container(
                           padding: EdgeInsets.symmetric(
-                            horizontal: 2.w,
-                            vertical: 0.3.h,
+                            horizontal: 1.5.w, // Daha küçük padding
+                            vertical: 0.3.h,   // Daha küçük padding
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.lightTheme.primaryColor
-                                .withValues(alpha: 0.8),
-                            borderRadius: BorderRadius.circular(3.w),
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(8), // Daha küçük radius
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              width: 0.8,
+                            ),
                           ),
                           child: Text(
                             interest,
-                            style: AppTheme.lightTheme.textTheme.labelSmall
-                                ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              fontSize: 8.sp, // Çok daha küçük font
+                              fontWeight: FontWeight.w300, // Daha ince
                             ),
                           ),
                         );
@@ -357,5 +331,46 @@ class _EnhancedSwipeableCandidateCardState
     if (score >= 60) return Colors.orange;
     if (score >= 40) return AppTheme.lightTheme.primaryColor;
     return Colors.red;
+  }
+
+  void _showAboutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          '${widget.candidate.fullName} Hakkında',
+          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Container(
+          constraints: BoxConstraints(maxHeight: 40.h),
+          child: SingleChildScrollView(
+            child: Text(
+              widget.candidate.bio ?? '',
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                fontSize: 14.sp,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Kapat',
+              style: TextStyle(
+                color: AppTheme.lightTheme.primaryColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
