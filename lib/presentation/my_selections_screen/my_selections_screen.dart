@@ -494,11 +494,11 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       final threeDaysAgo =
           DateTime.now().subtract(Duration(days: 3)).toIso8601String();
 
-      // 1. Seçiciye gelen PENDING istekleri al (yeni özellik)
+      // 1. Seçiciye gelen PENDING istekleri al (aday → seçici istekleri)
       final pendingRequests = await client
-          .from('selector_candidate_requests')
+          .from('candidate_requests')
           .select('*')
-          .eq('to_user_id', currentUser.id) // Seçiciye gelen istekler
+          .eq('selector_id', currentUser.id) // Seçiciye gelen istekler (aday → seçici)
           .eq('status', 'pending')
           .gte('created_at', threeDaysAgo)
           .order('created_at', ascending: false)
@@ -506,9 +506,9 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
 
       // 2. Son 3 günde seçiciye gelen yanıtları al (mevcut)  
       final responses = await client
-          .from('selector_candidate_requests')
+          .from('candidate_requests')
           .select('*')
-          .eq('from_user_id', currentUser.id) // Seçicinin gönderdiği istekler
+          .eq('selector_id', currentUser.id) // Seçicinin gönderdiği istekler
           .inFilter('status', ['accepted', 'rejected'])
           .gte('created_at', threeDaysAgo)
           .order('created_at', ascending: false)
@@ -516,8 +516,8 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
 
       // Tüm kullanıcı ID'lerini topla
       final allUserIds = <String>[];
-      allUserIds.addAll(pendingRequests.map((r) => r['from_user_id'] as String));
-      allUserIds.addAll(responses.map((r) => r['to_user_id'] as String));
+      allUserIds.addAll(pendingRequests.map((r) => r['candidate_id'] as String)); // İstek gönderen adaylar
+      allUserIds.addAll(responses.map((r) => r['candidate_id'] as String)); // Yanıt veren adaylar
       final uniqueUserIds = allUserIds.toSet().toList();
 
       // Kullanıcı bilgilerini çek
@@ -537,31 +537,31 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
 
       // Pending istekleri ekle (yeni)
       for (final request in pendingRequests) {
-        final fromUserId = request['from_user_id'] as String;
-        final fromUser = users[fromUserId];
+        final candidateId = request['candidate_id'] as String;
+        final candidateUser = users[candidateId];
 
-        if (fromUser == null) continue;
+        if (candidateUser == null) continue;
 
         final createdAt = DateTime.parse(request['created_at']);
 
         notifications.add({
           'type': 'pending_request',
-          'message': '${fromUser['full_name']} sizi seçici olarak eklemek istiyor.',
+          'message': '${candidateUser['full_name']} sizi seçici olarak eklemek istiyor.',
           'time': _getTimeAgo(createdAt),
           'created_at': createdAt,
           'isNew': true, // Pending istekler her zaman yeni
-          'user_image': fromUser['image_url'],
+          'user_image': candidateUser['image_url'],
           'request_id': request['id'],
-          'from_user_name': fromUser['full_name'],
+          'from_user_name': candidateUser['full_name'],
         });
       }
 
       // Yanıtları ekle (mevcut)
       for (final response in responses) {
-        final toUserId = response['to_user_id'] as String;
-        final toUser = users[toUserId];
+        final candidateId = response['candidate_id'] as String;
+        final candidateUser = users[candidateId];
 
-        if (toUser == null) continue;
+        if (candidateUser == null) continue;
 
         final isAccepted = response['status'] == 'accepted';
         final createdAt = DateTime.parse(response['created_at']);
@@ -569,12 +569,12 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
         notifications.add({
           'type': isAccepted ? 'accepted' : 'rejected',
           'message': isAccepted
-              ? '${toUser['full_name']} isteğinizi kabul etti!'
-              : '${toUser['full_name']} isteğinizi reddetti.',
+              ? '${candidateUser['full_name']} isteğinizi kabul etti!'
+              : '${candidateUser['full_name']} isteğinizi reddetti.',
           'time': _getTimeAgo(createdAt),
           'created_at': createdAt,
           'isNew': DateTime.now().difference(createdAt).inHours < 24,
-          'user_image': toUser['image_url'],
+          'user_image': candidateUser['image_url'],
         });
       }
 
@@ -621,7 +621,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       
       // İstek durumunu güncelle
       await client
-          .from('selector_candidate_requests')
+          .from('candidate_requests')
           .update({'status': 'accepted'})
           .eq('id', requestId);
 
@@ -631,14 +631,14 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       if (currentUser != null) {
         // İsteği veren aday ile seçici arasında ilişki kur
         final requestDetails = await client
-            .from('selector_candidate_requests')
-            .select('from_user_id')
+            .from('candidate_requests')
+            .select('candidate_id')
             .eq('id', requestId)
             .single();
 
         await UserService().addCandidateToSelector(
           selectorId: currentUser.id, // Mevcut kullanıcı (seçici)
-          candidateId: requestDetails['from_user_id'], // İsteği gönderen aday
+          candidateId: requestDetails['candidate_id'], // İsteği gönderen aday
         );
       }
 
@@ -697,7 +697,7 @@ class _MySelectionsScreenState extends State<MySelectionsScreen> {
       
       // İstek durumunu güncelle
       await client
-          .from('selector_candidate_requests')
+          .from('candidate_requests')
           .update({'status': 'rejected'})
           .eq('id', requestId);
 

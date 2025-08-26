@@ -507,6 +507,37 @@ class SupabaseNotificationService {
     }
   }
 
+  /// Send candidate request notification
+  Future<void> sendCandidateRequestNotification({
+    required String candidateId,
+    required String selectorName,
+    required String relationshipDegree,
+  }) async {
+    try {
+      final client = await SupabaseService().client;
+      
+      // Create notification record
+      await client.from('notifications').insert({
+        'user_id': candidateId,
+        'type': 'candidate_request',
+        'title': 'Yeni Görücü İsteği',
+        'message': '$selectorName sizi ($relationshipDegree) görücülük sisteminde adayı olarak eklemek istiyor.',
+        'data': {
+          'selector_name': selectorName,
+          'relationship_degree': relationshipDegree,
+          'type': 'candidate_request'
+        },
+        'is_read': false,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      print('Candidate request notification sent to: $candidateId');
+    } catch (e) {
+      print('Error sending candidate request notification: $e');
+      rethrow;
+    }
+  }
+
   /// Dispose resources
   void dispose() {
     _notificationSubscription?.cancel();

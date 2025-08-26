@@ -103,6 +103,7 @@ class UserService {
       final client = await _supabaseService.client;
       final response = await client.from('selector_candidates').select('''
             candidate_id,
+            relation,
             user_profiles!candidate_id (*)
           ''').eq('selector_id', selectorId).eq('status', 'active');
 
@@ -122,6 +123,7 @@ class UserService {
       final response = await client.from('selector_candidates').select('''
             candidate_id,
             status,
+            relation,
             user_profiles!candidate_id (
               id,
               full_name,
@@ -444,6 +446,7 @@ class UserService {
       final client = await _supabaseService.client;
       final response = await client.from('selector_candidates').select('''
             selector_id,
+            relation,
             user_profiles!selector_id (*)
           ''').eq('candidate_id', candidateId).eq('status', 'active');
 
@@ -706,13 +709,31 @@ class UserService {
   }) async {
     try {
       final client = await _supabaseService.client;
-      await client
-          .from('selector_candidates')
-          .update({'relationship_degree': relationshipDegree})
-          .eq('selector_id', selectorId)
-          .eq('candidate_id', candidateId);
       
-      print('Updated relationship degree for candidate: $candidateId to: $relationshipDegree');
+      // Debug: Check if the record exists
+      final existingRecord = await client
+          .from('selector_candidates')
+          .select('*')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId)
+          .maybeSingle();
+      
+      print('DEBUG: Existing record: $existingRecord');
+      
+      if (existingRecord != null) {
+        final result = await client
+            .from('selector_candidates')
+            .update({'relation': relationshipDegree})
+            .eq('selector_id', selectorId)
+            .eq('candidate_id', candidateId)
+            .select();
+        
+        print('DEBUG: Update result: $result');
+        print('Updated relationship degree for candidate: $candidateId to: $relationshipDegree');
+      } else {
+        print('DEBUG: No record found for selector: $selectorId, candidate: $candidateId');
+        throw Exception('No record found in selector_candidates table');
+      }
     } catch (error) {
       print('Error updating relationship degree: $error');
       throw Exception('Failed to update relationship degree: $error');
@@ -728,15 +749,86 @@ class UserService {
       final client = await _supabaseService.client;
       final response = await client
           .from('selector_candidates')
-          .select('relationship_degree')
+          .select('relation')
           .eq('selector_id', selectorId)
           .eq('candidate_id', candidateId)
-          .single();
+          .maybeSingle();
       
-      return response['relationship_degree'] as String?;
+      print('DEBUG: Get relationship degree - selector: $selectorId, candidate: $candidateId');
+      print('DEBUG: Response: $response');
+      
+      return response?['relation'] as String?;
     } catch (error) {
       print('Error getting relationship degree: $error');
       return null;
+    }
+  }
+  
+  /// Get candidates for a specific selector with relation information
+  Future<List<CandidateWithRelation>> getSelectorCandidatesWithRelation(String selectorId) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client.from('selector_candidates').select('''
+            candidate_id,
+            relation,
+            status,
+            user_profiles!candidate_id (*)
+          ''').eq('selector_id', selectorId).eq('status', 'active');
+
+      return response
+          .map((item) => CandidateWithRelation(
+                candidate: UserProfile.fromJson(item['user_profiles']),
+                relation: item['relation'] as String?,
+              ))
+          .toList();
+    } catch (error) {
+      throw Exception('Failed to get selector candidates with relation: $error');
+    }
+  }
+}
+
+/// Data class to hold candidate with relation information
+class CandidateWithRelation {
+  final UserProfile candidate;
+  final String? relation;
+
+  CandidateWithRelation({
+    required this.candidate,
+    this.relation,
+  });
+}
+
+/// Data class to hold selector with relation information
+class SelectorWithRelation {
+  final UserProfile selector;
+  final String? relation;
+
+  SelectorWithRelation({
+    required this.selector,
+    this.relation,
+  });
+}
+
+/// Get selectors for a specific candidate with relation information
+extension CandidateSelectorsWithRelation on UserService {
+  Future<List<SelectorWithRelation>> getCandidateSelectorsWithRelation(String candidateId) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client.from('selector_candidates').select('''
+            selector_id,
+            relation,
+            status,
+            user_profiles!selector_id (*)
+          ''').eq('candidate_id', candidateId).eq('status', 'active');
+
+      return response
+          .map((item) => SelectorWithRelation(
+                selector: UserProfile.fromJson(item['user_profiles']),
+                relation: item['relation'] as String?,
+              ))
+          .toList();
+    } catch (error) {
+      throw Exception('Failed to get candidate selectors with relation: $error');
     }
   }
 }

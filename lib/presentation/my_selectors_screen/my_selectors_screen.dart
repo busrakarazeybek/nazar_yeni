@@ -198,6 +198,22 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
           }
         }
 
+        // Get relation information for each selector
+        final selectorRelations = <String, String>{};
+        for (final selector in selectors) {
+          try {
+            final relationResponse = await _userService.getRelationshipDegree(
+              selectorId: selector.id, 
+              candidateId: currentUser.id,
+            );
+            if (relationResponse != null) {
+              selectorRelations[selector.id] = relationResponse;
+            }
+          } catch (e) {
+            print('Error getting relation for selector ${selector.id}: $e');
+          }
+        }
+
         // Convert UserProfile selectors to selector format for UI consistency
         loadedSelectors = selectors.map((selector) {
           // Calculate real stats for this selector (from candidate's perspective)
@@ -242,7 +258,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             "location": selector.location,
             "profession": selector.profession,
             "interests": selector.interests,
-            "relationshipDegree": "", // Will be loaded separately
+            "relationshipDegree": selectorRelations[selector.id] ?? "", // Actual relation from database
           };
         }).toList();
       }
@@ -563,6 +579,30 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                         ),
                       ],
                     ),
+                    
+                    // Delete button for selectors viewing candidates
+                    if (_isCurrentUserSelector()) ...[
+                      SizedBox(height: 2.h),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showDeleteCandidateDialog(selector),
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: AppTheme.errorColor,
+                          ),
+                          label: Text(
+                            'Adayı Sil',
+                            style: TextStyle(
+                              color: AppTheme.errorColor,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: AppTheme.errorColor),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1407,7 +1447,19 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                   );
                   
                   // Arka planda veritabanını güncelle
-                  await _updateRelationshipDegreeInDatabase(selector, degree);
+                  try {
+                    await _updateRelationshipDegreeInDatabase(selector, degree);
+                  } catch (e) {
+                    // Eğer veritabanı güncellemesi başarısız olursa kullanıcıya bildir
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Veritabanı güncelleme hatası: $e'),
+                        backgroundColor: AppTheme.errorColor,
+                        behavior: SnackBarBehavior.floating,
+                        duration: Duration(seconds: 4),
+                      ),
+                    );
+                  }
                 } else {
                   // Boş değer girildiyse sadece dialog'u kapat
                   Navigator.of(context).pop();
@@ -1483,6 +1535,196 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
           content: Text('Veritabanı güncellenirken hata: $e'),
           backgroundColor: AppTheme.errorColor,
           behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+  
+  /// Check if current user is a selector
+  bool _isCurrentUserSelector() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    return authProvider.currentUserProfile?.role == UserRole.selector;
+  }
+  
+  /// Show delete candidate confirmation dialog
+  void _showDeleteCandidateDialog(Map<String, dynamic> candidate) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: AppTheme.errorColor,
+              size: 28,
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Text(
+                'Adayı Sil',
+                style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                  color: AppTheme.errorColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${candidate['name']} kişisini adaylarınız listesinden kalıcı olarak silmek istediğinizden emin misiniz?',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            SizedBox(height: 2.h),
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: AppTheme.warningColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.warningColor.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: AppTheme.warningColor,
+                    size: 20,
+                  ),
+                  SizedBox(width: 2.w),
+                  Expanded(
+                    child: Text(
+                      'Bu işlem geri alınamaz. Tüm eşleşme geçmişi korunur.',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.warningColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'İptal',
+              style: TextStyle(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteCandidate(candidate);
+            },
+            icon: Icon(Icons.delete_forever),
+            label: Text('Sil'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Delete candidate from selector's list
+  Future<void> _deleteCandidate(Map<String, dynamic> candidate) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = authProvider.currentUserProfile;
+      
+      if (currentUser == null || currentUser.role != UserRole.selector) {
+        return;
+      }
+      
+      // Show loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 3.w),
+              Text('Aday siliniyor...'),
+            ],
+          ),
+          backgroundColor: AppTheme.lightTheme.primaryColor,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
+      // Remove from database
+      await _userService.removeCandidateFromSelector(
+        selectorId: currentUser.id,
+        candidateId: candidate['id'] as String,
+      );
+      
+      // Remove from local lists
+      setState(() {
+        _allSelectors.removeWhere((s) => s['id'] == candidate['id']);
+        _filteredSelectors.removeWhere((s) => s['id'] == candidate['id']);
+      });
+      
+      // Close detail modal if it's open
+      Navigator.pop(context);
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${candidate['name']} başarıyla silindi'),
+          backgroundColor: AppTheme.successColor,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Geri Al',
+            textColor: Colors.white,
+            onPressed: () {
+              // Add back to lists (UI only - would need restore logic for database)
+              setState(() {
+                _allSelectors.add(candidate);
+                _onSearchChanged();
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('${candidate['name']} geri eklendi (geçici)'),
+                  backgroundColor: AppTheme.lightTheme.primaryColor,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      
+    } catch (e) {
+      // Hide loading and show error
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Aday silinirken hata oluştu: $e'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
         ),
       );
     }

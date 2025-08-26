@@ -149,6 +149,9 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       
       // Load matches count separately
       await _loadMatchesCount();
+      
+      // Trigger a refresh to show incoming requests
+      setState(() {});
     } catch (e) {
       setState(() {
         _errorMessage = 'Veriler yüklenirken hata oluştu: $e';
@@ -331,13 +334,19 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
 
   // 1. İstekleri çekmek için fonksiyon
   Future<List<Map<String, dynamic>>> _getIncomingRequests(String userId) async {
-    final client = await SupabaseService().client;
-    final response = await client
-        .from('selector_candidate_requests')
-        .select()
-        .eq('to_user_id', userId)
-        .eq('status', 'pending');
-    return List<Map<String, dynamic>>.from(response);
+    try {
+      final client = await SupabaseService().client;
+      final response = await client
+          .from('candidate_requests')
+          .select()
+          .eq('candidate_id', userId)
+          .eq('status', 'pending');
+      
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('ERROR: Failed to load incoming requests: $e');
+      return [];
+    }
   }
 
   // 2. Kabul/ret fonksiyonları
@@ -373,25 +382,18 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       
       final client = await SupabaseService().client;
       await client
-          .from('selector_candidate_requests')
+          .from('candidate_requests')
           .update({
             'status': 'accepted',
           }).eq('id', req['id']);
 
-      // Gerçek ilişkiyi oluştur
-      if (req['type'] == 'selector') {
-        // Aday, seçiciyi kendi listesine ekler (selector_id: to_user_id, candidate_id: from_user_id)
-        await UserService().addCandidateToSelector(
-          selectorId: req['to_user_id'],
-          candidateId: req['from_user_id'],
-        );
-      } else if (req['type'] == 'candidate') {
-        // Seçici, adayı kendi listesine ekler (selector_id: from_user_id, candidate_id: to_user_id)
-        await UserService().addCandidateToSelector(
-          selectorId: req['from_user_id'],
-          candidateId: req['to_user_id'],
-        );
-      }
+      // Seçici-aday ilişkisini oluştur yakınlık derecesi ile birlikte
+      await client.from('selector_candidates').insert({
+        'selector_id': req['selector_id'],
+        'candidate_id': req['candidate_id'],
+        'status': 'active',
+        'relation': req['relation'], // Yakınlık derecesini dahil et
+      });
       
       // Loading dialog'ı kapat
       Navigator.of(context).pop();
@@ -466,7 +468,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       
       final client = await SupabaseService().client;
       await client
-          .from('selector_candidate_requests')
+          .from('candidate_requests')
           .update({
             'status': 'rejected',
           }).eq('id', req['id']);
@@ -520,7 +522,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
         return FutureBuilder<List<UserProfile>>(
           future: Future.wait(
             requests.map(
-              (req) => UserService().getUserProfile(req['from_user_id']),
+              (req) => UserService().getUserProfile(req['selector_id']),
             ),
           ).then((list) => list.whereType<UserProfile>().toList()),
           builder: (context, userSnapshot) {
@@ -601,7 +603,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 ...List.generate(requests.length, (i) {
                   final req = requests[i];
                   final fromUser = userProfiles[i];
-                  final fromUserName = fromUser.fullName ?? req['from_user_id'];
+                  final fromUserName = fromUser.fullName ?? req['selector_id'];
                   final relation = req['relation'] ?? '';
                   return Card(
                     elevation: 2,
@@ -1779,7 +1781,6 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   }
 
   void _handleAddSelector() async {
-    print('Add selector button tapped'); // Debug
     final result = await showModalBottomSheet<AddSelectorResult>(
       context: context,
       isScrollControlled: true,
@@ -1787,17 +1788,41 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       builder: (context) => _buildAddSelectorBottomSheet(),
     );
 
-    if (result != null && result.user != null && result.relation != null) {
+    if (result != null && result.user != null) {
       try {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
         final currentUser = authProvider.currentUserProfile;
+        
         if (currentUser != null) {
           final client = await SupabaseService().client;
-          await client.from('selector_candidate_requests').insert({
-            'from_user_id': currentUser.id,
-            'to_user_id': result.user!.id,
-            'type': 'selector',
+          
+          // Check if request already exists
+          final existingRequest = await client
+              .from('candidate_requests')
+              .select()
+              .eq('selector_id', result.user!.id)
+              .eq('candidate_id', currentUser.id)
+              .maybeSingle();
+          
+          if (existingRequest != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Bu kişiye zaten istek gönderilmiş'),
+                backgroundColor: AppTheme.warningColor,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            return;
+          }
+          
+          // This should be a different flow for candidate requesting selector
+          // For now, let's make it work with existing structure
+          await client.from('candidate_requests').insert({
+            'selector_id': result.user!.id, // The user being invited as selector
+            'candidate_id': currentUser.id,  // Current user is candidate
             'status': 'pending',
+            'relation': result.relation ?? 'Tanıdık', // Use actual relation
+            'message': 'Sizi görücüm olarak eklemek istiyorum.',
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1809,15 +1834,21 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           );
         }
       } catch (e) {
+        print('ERROR: Failed to send selector request: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Görücü ekleme isteği gönderilemedi'),
+            content: Text('Görücü ekleme isteği gönderilemedi: $e'),
             backgroundColor: AppTheme.errorColor,
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     }
+  }
+
+  void _addSelector() async {
+    // TODO: Implement selector search and selection
+    Navigator.pop(context, AddSelectorResult()); // Temporary implementation
   }
 
   Widget _buildAddSelectorBottomSheet() {

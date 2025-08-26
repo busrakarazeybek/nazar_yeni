@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_export.dart';
 import '../../models/match_proposal.dart';
 import '../../services/match_proposal_service.dart';
+import '../../services/supabase_notification_service.dart';
 import './widgets/enhanced_candidate_selection_carousel_widget.dart';
 import './widgets/enhanced_potential_matches_section_widget.dart';
 import './widgets/preferences_context_widget.dart';
@@ -1767,32 +1768,66 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
           Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
       if (currentUser == null) return;
 
-      // Check if candidate is already added
-      final isAlreadyAdded = await UserService().isCandidateAlreadyAdded(
-        selectorId: currentUser.id,
-        candidateId: candidate.id,
-      );
+      final client = await SupabaseService().client;
+      
+      // Check if request already exists
+      final existingRequest = await client
+          .from('candidate_requests')
+          .select()
+          .eq('selector_id', currentUser.id)
+          .eq('candidate_id', candidate.id)
+          .maybeSingle();
+      
+      if (existingRequest != null) {
+        _showErrorMessage('Bu adaya zaten istek gönderildi');
+        return;
+      }
 
-      if (isAlreadyAdded) {
+      // Check if candidate is already added to selector_candidates
+      final existingCandidate = await client
+          .from('selector_candidates')
+          .select()
+          .eq('selector_id', currentUser.id)
+          .eq('candidate_id', candidate.id)
+          .maybeSingle();
+      
+      if (existingCandidate != null) {
         _showErrorMessage('Bu aday zaten ekli');
         return;
       }
 
-      // Adaya istek gönder ve yakınlık derecesini dahil et
-      final client = await SupabaseService().client;
-      await client.from('selector_candidate_requests').insert({
-        'from_user_id': currentUser.id,
-        'to_user_id': candidate.id,
-        'type': 'candidate', // ADAY İSTEĞİ
+      // Create candidate request (pending approval)
+      await client.from('candidate_requests').insert({
+        'selector_id': currentUser.id,
+        'candidate_id': candidate.id,
         'status': 'pending',
-        'relation': relationshipDegree, // Yakınlık derecesi eklendi
+        'relation': relationshipDegree,
+        'message': 'Sizi görücülük sisteminde adayım olarak eklemek istiyorum.',
       });
+
+      // Send notification to candidate
+      await _sendCandidateNotification(candidate, relationshipDegree, currentUser);
+      
       await _refreshData();
       _showSuccessMessage(
-        '${candidate.fullName} kişisine adaylık isteği gönderildi ($relationshipDegree olarak), onay bekleniyor!',
+        '${candidate.fullName} kişisine aday ekleme isteği gönderildi ($relationshipDegree olarak). Onay bekleniyor.',
       );
     } catch (e) {
-      _showErrorMessage('Aday eklenemedi: $e');
+      _showErrorMessage('İstek gönderilemedi: $e');
+    }
+  }
+
+  Future<void> _sendCandidateNotification(UserProfile candidate, String relationshipDegree, UserProfile currentUser) async {
+    try {
+      // Burada Supabase notification service kullanacağız
+      final notificationService = SupabaseNotificationService();
+      await notificationService.sendCandidateRequestNotification(
+        candidateId: candidate.id,
+        selectorName: currentUser.fullName,
+        relationshipDegree: relationshipDegree,
+      );
+    } catch (e) {
+      // Notification hatası ana işlemi durdurmasın
     }
   }
 }
