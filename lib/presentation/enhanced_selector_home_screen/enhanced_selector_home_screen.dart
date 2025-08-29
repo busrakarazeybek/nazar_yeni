@@ -1066,7 +1066,7 @@ class _EnhancedSelectorHomeScreenState extends State<EnhancedSelectorHomeScreen>
       final Map<String, String> degrees = {};
       
       for (final candidate in candidates) {
-        final degree = await _userService.getRelationshipDegree(
+        final degree = await _userService.getSelectorRelationshipDegree(
           selectorId: selectorId,
           candidateId: candidate.id,
         );

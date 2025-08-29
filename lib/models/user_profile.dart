@@ -40,6 +40,7 @@ class UserProfile {
   final List<String>? preferredCities;
   final List<String>? preferredInterests;
   final List<String>? preferredGenders;
+  final String? relationshipType; // Yakınlık derecesi
 
   UserProfile({
     required this.id,
@@ -64,6 +65,7 @@ class UserProfile {
     this.preferredCities,
     this.preferredInterests,
     this.preferredGenders,
+    this.relationshipType,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -102,6 +104,7 @@ class UserProfile {
       preferredGenders: json['preferred_genders'] != null
           ? List<String>.from(json['preferred_genders'] as List)
           : null,
+      relationshipType: json['relationship_type'] as String?,
     );
   }
 
@@ -129,6 +132,7 @@ class UserProfile {
       'preferred_cities': preferredCities,
       'preferred_interests': preferredInterests,
       'preferred_genders': preferredGenders,
+      'relationship_type': relationshipType,
     };
   }
 
@@ -152,6 +156,7 @@ class UserProfile {
     List<String>? preferredCities,
     List<String>? preferredInterests,
     List<String>? preferredGenders,
+    String? relationshipType,
   }) {
     return UserProfile(
       id: id,
@@ -175,6 +180,7 @@ class UserProfile {
       preferredCities: preferredCities ?? this.preferredCities,
       preferredInterests: preferredInterests ?? this.preferredInterests,
       preferredGenders: preferredGenders ?? this.preferredGenders,
+      relationshipType: relationshipType ?? this.relationshipType,
     );
   }
 

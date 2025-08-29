@@ -22,6 +22,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   bool _isLoading = true;
   List<UserProfile> _selectors = [];
   List<MatchProposal> _proposals = [];
+  List<MatchProposal> _allProposals = []; // Store original unfiltered proposals
   UserProfile? _selectedSelector;
   String? _errorMessage;
   late TabController _tabController;
@@ -30,6 +31,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
   late AnimationController _selectionAnimationController;
   late Animation<double> _selectionAnimation;
   Map<String, bool> _viewedSelectors = {};
+  bool _showRelationshipDegree = false; // Switch state for showing relationship degree vs names
+  final UserService _userService = UserService();
 
   @override
   void initState() {
@@ -103,28 +106,27 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
         currentUser.id,
       );
 
-      // Get candidate's actual selectors (those added by the candidate)
+      // Get candidate's actual selectors with relation info
       final userService = UserService();
-      final candidateSelectors = await userService.getCandidateSelectors(currentUser.id);
-      final candidateSelectorIds = candidateSelectors.map((s) => s.id).toSet();
-
-      // Extract unique selectors from proposals who are the candidate's own selectors
-      final proposalSelectorIds = proposals.map((p) => p.selectorId).toSet().toList();
-      final selectors = <UserProfile>[];
-
-      for (final selectorId in proposalSelectorIds) {
-        // Only include selectors that were added by the candidate
-        if (candidateSelectorIds.contains(selectorId)) {
-          try {
-            final selector = await userService.getUserProfile(selectorId);
-            if (selector != null) {
-              selectors.add(selector);
-            }
-          } catch (e) {
-            print('Error loading selector $selectorId: $e');
-          }
-        }
-      }
+      final allCandidateSelectorsWithRelation = await userService.getCandidateSelectorsWithRelation(currentUser.id);
+      
+      // Filter only active selectors for home page
+      final candidateSelectorsWithRelation = allCandidateSelectorsWithRelation
+          .where((selectorWithRelation) => selectorWithRelation.status == 'active')
+          .toList();
+      
+      final acceptedSelectorIds = candidateSelectorsWithRelation.map((s) => s.selector.id).toSet();
+      
+      // Filter proposals to only include those from accepted selectors
+      final filteredProposals = proposals.where((proposal) => 
+          acceptedSelectorIds.contains(proposal.selectorId)).toList();
+      
+      // Convert to UserProfile with relation info
+      final selectors = candidateSelectorsWithRelation.map((selectorWithRelation) {
+        return selectorWithRelation.selector.copyWith(
+          relationshipType: selectorWithRelation.relation,
+        );
+      }).toList();
 
       // Always add the special "Görücü" profile at the beginning
       final gorocuProfile = _createGorocuProfile();
@@ -133,7 +135,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       // Load data without badge-related processing since we use message count now
       
       // Load viewed selectors state first before setting state
-      _proposals = proposals;
+      _allProposals = proposals; // Store original unfiltered proposals
+      _proposals = filteredProposals;
       _selectors = selectors;
       await _loadViewedSelectorsState();
       
@@ -307,7 +310,8 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
         .map((s) => s.id)
         .toSet();
 
-    return _proposals
+    // Use original unfiltered proposals
+    return _allProposals
         .where(
           (p) {
             // Only show proposals from selectors who are NOT in candidate's selector list
@@ -1287,7 +1291,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with title only
+          // Header with title, heart button and switch
           Row(
             children: [
               Container(
@@ -1308,6 +1312,25 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: AppTheme.lightTheme.colorScheme.onSurface,
+                ),
+              ),
+              Spacer(),
+              // Relationship degree toggle button
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showRelationshipDegree = !_showRelationshipDegree;
+                  });
+                },
+                icon: Icon(
+                  _showRelationshipDegree ? Icons.person : Icons.favorite,
+                  size: 20,
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: _showRelationshipDegree
+                      ? AppTheme.lightTheme.primaryColor.withValues(alpha: 0.2)
+                      : AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1),
+                  foregroundColor: AppTheme.lightTheme.primaryColor,
                 ),
               ),
             ],
@@ -1397,6 +1420,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
             isSelected: isSelected,
             pendingCount: pendingCount,
             onTap: () => _handleSelectorSelection(selector),
+            onLongPress: selector.id != 'gorocu_profile_special' ? () async => await _showRemoveSelectorDialog(selector) : null,
           );
         },
       ),
@@ -1408,6 +1432,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
     required bool isSelected,
     required int pendingCount,
     required VoidCallback onTap,
+    VoidCallback? onLongPress,
   }) {
     return AnimatedContainer(
       duration: Duration(milliseconds: 300),
@@ -1415,6 +1440,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
       margin: EdgeInsets.symmetric(horizontal: 1.w),
       child: GestureDetector(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1505,12 +1531,18 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
               child: Container(
                 width: 16.w,
                 child: Text(
-                  selector.fullName.split(' ').first,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                    _showRelationshipDegree 
+                        ? (selector.id == 'gorocu_profile_special' 
+                            ? 'Görücü'
+                            : (selector.relationshipType?.isNotEmpty == true 
+                                ? selector.relationshipType! 
+                                : 'Yakınlık?'))
+                        : selector.fullName.split(' ').first,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
             ),
           ],
         ),
@@ -1671,7 +1703,9 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                 ),
                 SizedBox(height: 1.h),
                 Text(
-                  selector.fullName,
+                  _showRelationshipDegree && selector.relationshipType != null && selector.relationshipType!.isNotEmpty 
+                    ? selector.relationshipType! 
+                    : selector.fullName,
                   style: AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                     color: isSelected
@@ -2659,6 +2693,484 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
           label: 'Profil',
         ),
       ],
+    );
+  }
+
+  Future<void> _showRemoveSelectorDialog(UserProfile selector) async {
+    // Veritabanından güncel status'u al
+    final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+    if (currentUser == null) return;
+    
+    final supabaseService = SupabaseService();
+    final client = await supabaseService.client;
+    final statusResponse = await client
+        .from('selector_candidates')
+        .select('status')
+        .eq('selector_id', selector.id)
+        .eq('candidate_id', currentUser.id)
+        .maybeSingle();
+    
+    final currentStatus = statusResponse?['status'] ?? 'active';
+    final isCurrentlyActive = currentStatus == 'active';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: AppTheme.lightTheme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(4.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 12.w,
+                height: 0.5.h,
+                margin: EdgeInsets.only(bottom: 2.h),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.colorScheme.outline,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6.w),
+                    child: CustomImageWidget(
+                      imageUrl: selector.imageUrl ?? '',
+                      width: 12.w,
+                      height: 12.w,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  SizedBox(width: 3.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selector.fullName,
+                          style: AppTheme.lightTheme.textTheme.titleMedium,
+                        ),
+                        Text(
+                          selector.relationshipType ?? 'Görücü',
+                          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 3.h),
+              
+              // Duraklat/Aktifleştir butonu
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _toggleSelectorStatus(selector);
+                  },
+                  icon: Icon(isCurrentlyActive ? Icons.pause : Icons.play_arrow),
+                  label: Text(isCurrentlyActive ? 'Duraklat' : 'Aktifleştir'),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: isCurrentlyActive ? AppTheme.warningColor : AppTheme.successColor,
+                    ),
+                    foregroundColor: isCurrentlyActive ? AppTheme.warningColor : AppTheme.successColor,
+                  ),
+                ),
+              ),
+              
+              SizedBox(height: 2.h),
+              
+              // Tamamen Kaldır butonu
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showPermanentRemoveConfirmation(selector);
+                  },
+                  icon: Icon(Icons.delete_forever_outlined),
+                  label: Text('Tamamen Kaldır'),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppTheme.errorColor),
+                    foregroundColor: AppTheme.errorColor,
+                  ),
+                ),
+              ),
+              
+              SizedBox(height: 2.h),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleSelectorStatus(UserProfile selector) async {
+    try {
+      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      if (currentUser == null) return;
+
+      final userService = UserService();
+      
+      // Veritabanından güncel status'u kontrol et
+      final supabaseService = SupabaseService();
+      final client = await supabaseService.client;
+      final statusResponse = await client
+          .from('selector_candidates')
+          .select('status')
+          .eq('selector_id', selector.id)
+          .eq('candidate_id', currentUser.id)
+          .maybeSingle();
+      
+      final currentStatus = statusResponse?['status'] ?? 'active';
+      final isCurrentlyActive = currentStatus == 'active';
+      
+      if (isCurrentlyActive) {
+        // Duraklat
+        await userService.pauseCandidateForSelector(
+          selectorId: selector.id,
+          candidateId: currentUser.id,
+        );
+        
+        // Sayfayı yenile
+        await _loadData();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${selector.fullName} duraklatıldı'),
+            backgroundColor: AppTheme.warningColor,
+            action: SnackBarAction(
+              label: "Geri Al",
+              textColor: Colors.white,
+              onPressed: () => _toggleSelectorStatus(selector),
+            ),
+          ),
+        );
+      } else {
+        // Aktifleştir
+        await userService.activateCandidateForSelector(
+          selectorId: selector.id,
+          candidateId: currentUser.id,
+        );
+        
+        // Sayfayı yenile
+        await _loadData();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${selector.fullName} aktifleştirildi'),
+            backgroundColor: AppTheme.successColor,
+            action: SnackBarAction(
+              label: "Geri Al", 
+              textColor: Colors.white,
+              onPressed: () => _toggleSelectorStatus(selector),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Durum değiştirilirken hata oluştu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _removeSelector(UserProfile selector) async {
+    try {
+      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      if (currentUser == null) return;
+
+      final userService = UserService();
+      
+      // Sadece duraklat - böylece seçicilerimde 'duraklatıldı' olarak görünür
+      await userService.pauseCandidateForSelector(
+        selectorId: selector.id,
+        candidateId: currentUser.id,
+      );
+
+      // Remove from local list and refresh
+      setState(() {
+        _selectors.removeWhere((s) => s.id == selector.id);
+        if (_selectedSelector?.id == selector.id) {
+          _selectedSelector = _selectors.isNotEmpty ? _selectors.first : null;
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${selector.fullName} ana sayfadan kaldırıldı ve duraklatıldı'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Görücü kaldırılırken hata oluştu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Show permanent remove confirmation dialog
+  void _showPermanentRemoveConfirmation(UserProfile selector) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Tamamen Kaldır'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${selector.fullName} adlı görücüyü tamamen kaldırmak istediğinize emin misiniz?'),
+              SizedBox(height: 2.h),
+              Container(
+                padding: EdgeInsets.all(3.w),
+                decoration: BoxDecoration(
+                  color: AppTheme.errorColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: AppTheme.errorColor, size: 5.w),
+                    SizedBox(width: 2.w),
+                    Expanded(
+                      child: Text(
+                        'Bu işlem geri alınamaz. Görücü seçicilerim listesinden tamamen çıkarılır.',
+                        style: TextStyle(
+                          color: AppTheme.errorColor,
+                          fontSize: 12.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('İptal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _permanentRemoveSelector(selector);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.errorColor,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Tamamen Kaldır'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Permanently remove selector from all lists
+  Future<void> _permanentRemoveSelector(UserProfile selector) async {
+    try {
+      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      if (currentUser == null) return;
+
+      final userService = UserService();
+      
+      // Tamamen sil
+      await userService.removeSelectorCandidate(
+        selectorId: selector.id,
+        candidateId: currentUser.id,
+      );
+
+      // Remove from local list and refresh completely
+      setState(() {
+        _selectors.removeWhere((s) => s.id == selector.id);
+        if (_selectedSelector?.id == selector.id) {
+          _selectedSelector = _selectors.isNotEmpty ? _selectors.first : null;
+        }
+      });
+      
+      // Reload data to ensure consistency
+      await _loadData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${selector.fullName} tamamen kaldırıldı'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Görücü kaldırılırken hata oluştu: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Update relationship degree for a selector (for candidates)
+  Future<void> _updateRelationshipDegree(UserProfile selector, String degree) async {
+    try {
+      print('DEBUG: Starting relationship degree update');
+      final currentUser = Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
+      if (currentUser == null) {
+        print('DEBUG: No current user found');
+        return;
+      }
+
+      print('DEBUG: Current user: ${currentUser.id}, Selector: ${selector.id}, Degree: $degree');
+
+      // Update in database - ensure record exists first
+      final supabaseService = SupabaseService();
+      final client = await supabaseService.client;
+      
+      print('DEBUG: Checking if record exists...');
+      // Check if record exists
+      final existingRecord = await client
+          .from('selector_candidates')
+          .select('*')
+          .eq('selector_id', selector.id)
+          .eq('candidate_id', currentUser.id)
+          .maybeSingle();
+      
+      print('DEBUG: Existing record: $existingRecord');
+      
+      if (existingRecord != null) {
+        print('DEBUG: Record exists, updating...');
+        // Record exists, update it with dual relation fields
+        final result = await client
+            .from('selector_candidates')
+            .update({
+              'candidate_relation': degree,
+              'relation': degree, // Keep old field for backward compatibility
+            })
+            .eq('selector_id', selector.id)
+            .eq('candidate_id', currentUser.id)
+            .select();
+        print('DEBUG: Update result: $result');
+      } else {
+        print('DEBUG: Record does not exist, inserting...');
+        // Record doesn't exist, create it
+        final result = await client
+            .from('selector_candidates')
+            .insert({
+              'selector_id': selector.id,
+              'candidate_id': currentUser.id,
+              'candidate_relation': degree,
+              'relation': degree, // Keep old field for backward compatibility
+              'status': 'active',
+              'created_at': DateTime.now().toIso8601String(),
+            })
+            .select();
+        print('DEBUG: Insert result: $result');
+      }
+
+      // Update local UI by refreshing the selector with new relationshipType
+      setState(() {
+        final index = _selectors.indexWhere((s) => s.id == selector.id);
+        if (index != -1) {
+          _selectors[index] = selector.copyWith(relationshipType: degree);
+          if (_selectedSelector?.id == selector.id) {
+            _selectedSelector = _selectors[index];
+          }
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${selector.fullName} ile yakınlık dereceniz güncellendi: $degree'),
+          backgroundColor: AppTheme.successColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      print('DEBUG: Error updating relationship degree: $e');
+      print('DEBUG: Error type: ${e.runtimeType}');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Yakınlık derecesi güncellenirken hata: $e'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  /// Show relationship degree selection dialog
+  void _showRelationshipDegreeDialog(UserProfile selector) {
+    final List<String> degrees = [
+      'Kardeş',
+      'Arkadaş', 
+      'Anne',
+      'Baba',
+      'En yakın kanki',
+      'Bacı',
+      'Kuzen',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: AppTheme.lightTheme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(4.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 12.w,
+                height: 0.5.h,
+                margin: EdgeInsets.only(bottom: 2.h),
+                decoration: BoxDecoration(
+                  color: AppTheme.lightTheme.colorScheme.outline,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                alignment: Alignment.center,
+              ),
+              Text(
+                '${selector.fullName} ile yakınlık derecenizi seçin',
+                style: AppTheme.lightTheme.textTheme.titleLarge,
+              ),
+              SizedBox(height: 3.h),
+              ...degrees.map((degree) => ListTile(
+                title: Text(degree),
+                trailing: selector.relationshipType == degree
+                    ? Icon(Icons.check, color: AppTheme.successColor)
+                    : null,
+                onTap: () {
+                  Navigator.pop(context);
+                  _updateRelationshipDegree(selector, degree);
+                },
+              )).toList(),
+              SizedBox(height: 2.h),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

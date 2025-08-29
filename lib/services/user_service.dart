@@ -740,7 +740,7 @@ class UserService {
     }
   }
 
-  /// Get relationship degree for a candidate
+  /// Get relationship degree for a candidate (from candidate perspective)
   Future<String?> getRelationshipDegree({
     required String selectorId,
     required String candidateId,
@@ -749,7 +749,7 @@ class UserService {
       final client = await _supabaseService.client;
       final response = await client
           .from('selector_candidates')
-          .select('relation')
+          .select('relation, candidate_relation')
           .eq('selector_id', selectorId)
           .eq('candidate_id', candidateId)
           .maybeSingle();
@@ -757,9 +757,33 @@ class UserService {
       print('DEBUG: Get relationship degree - selector: $selectorId, candidate: $candidateId');
       print('DEBUG: Response: $response');
       
-      return response?['relation'] as String?;
+      return response?['candidate_relation'] as String? ?? response?['relation'] as String?;
     } catch (error) {
       print('Error getting relationship degree: $error');
+      return null;
+    }
+  }
+
+  /// Get relationship degree from selector perspective
+  Future<String?> getSelectorRelationshipDegree({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      final response = await client
+          .from('selector_candidates')
+          .select('relation, selector_relation')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId)
+          .maybeSingle();
+      
+      print('DEBUG: Get selector relationship degree - selector: $selectorId, candidate: $candidateId');
+      print('DEBUG: Response: $response');
+      
+      return response?['selector_relation'] as String? ?? response?['relation'] as String?;
+    } catch (error) {
+      print('Error getting selector relationship degree: $error');
       return null;
     }
   }
@@ -771,6 +795,8 @@ class UserService {
       final response = await client.from('selector_candidates').select('''
             candidate_id,
             relation,
+            selector_relation,
+            candidate_relation,
             status,
             user_profiles!candidate_id (*)
           ''').eq('selector_id', selectorId).eq('status', 'active');
@@ -778,7 +804,7 @@ class UserService {
       return response
           .map((item) => CandidateWithRelation(
                 candidate: UserProfile.fromJson(item['user_profiles']),
-                relation: item['relation'] as String?,
+                relation: item['selector_relation'] as String? ?? item['relation'] as String?,
               ))
           .toList();
     } catch (error) {
@@ -802,10 +828,12 @@ class CandidateWithRelation {
 class SelectorWithRelation {
   final UserProfile selector;
   final String? relation;
+  final String? status;
 
   SelectorWithRelation({
     required this.selector,
     this.relation,
+    this.status,
   });
 }
 
@@ -817,18 +845,141 @@ extension CandidateSelectorsWithRelation on UserService {
       final response = await client.from('selector_candidates').select('''
             selector_id,
             relation,
+            selector_relation,
+            candidate_relation,
             status,
             user_profiles!selector_id (*)
-          ''').eq('candidate_id', candidateId).eq('status', 'active');
+          ''').eq('candidate_id', candidateId);
 
       return response
           .map((item) => SelectorWithRelation(
                 selector: UserProfile.fromJson(item['user_profiles']),
-                relation: item['relation'] as String?,
+                relation: item['candidate_relation'] as String? ?? item['relation'] as String?,
+                status: item['status'] as String?,
               ))
           .toList();
     } catch (error) {
       throw Exception('Failed to get candidate selectors with relation: $error');
+    }
+  }
+
+  /// Update relationship degree between candidate and selector
+  Future<void> updateRelationshipDegree(String candidateId, String selectorId, String relationshipDegree) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      // Direct update instead of RPC function
+      await client
+          .from('selector_candidates')
+          .update({'relation': relationshipDegree})
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId);
+          
+      print('Updated relationship degree: $selectorId -> $candidateId: $relationshipDegree');
+    } catch (error) {
+      print('Error updating relationship degree: $error');
+      throw Exception('Failed to update relationship degree: $error');
+    }
+  }
+
+  /// Remove selector-candidate relationship
+  Future<void> removeSelectorCandidate({
+    required String selectorId,
+    required String candidateId,
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      await client
+          .from('selector_candidates')
+          .delete()
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId);
+    } catch (error) {
+      throw Exception('Failed to remove selector-candidate relationship: $error');
+    }
+  }
+
+  /// Update dual relationship degrees (selector's view and candidate's view)
+  Future<void> updateDualRelationshipDegree({
+    required String selectorId,
+    required String candidateId,
+    String? selectorRelation,  // How selector sees candidate (e.g., "kızım")
+    String? candidateRelation, // How candidate sees selector (e.g., "annem")
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      final updateData = <String, dynamic>{};
+      if (selectorRelation != null) {
+        updateData['selector_relation'] = selectorRelation;
+      }
+      if (candidateRelation != null) {
+        updateData['candidate_relation'] = candidateRelation;
+      }
+      
+      if (updateData.isEmpty) return;
+      
+      updateData['updated_at'] = DateTime.now().toIso8601String();
+
+      // Check if record exists
+      final existingRecord = await client
+          .from('selector_candidates')
+          .select('*')
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId)
+          .maybeSingle();
+
+      if (existingRecord != null) {
+        // Record exists, update it
+        await client
+            .from('selector_candidates')
+            .update(updateData)
+            .eq('selector_id', selectorId)
+            .eq('candidate_id', candidateId);
+      } else {
+        // Record doesn't exist, create it
+        await client
+            .from('selector_candidates')
+            .insert({
+              'selector_id': selectorId,
+              'candidate_id': candidateId,
+              'status': 'active',
+              'created_at': DateTime.now().toIso8601String(),
+              ...updateData,
+            });
+      }
+      
+      print('Updated dual relationship degree: $selectorId -> $candidateId');
+      print('Selector relation: $selectorRelation, Candidate relation: $candidateRelation');
+    } catch (error) {
+      print('Error updating dual relationship degree: $error');
+      throw Exception('Failed to update dual relationship degree: $error');
+    }
+  }
+
+  /// Get relationship degree from specific perspective (selector or candidate)
+  Future<String?> getDualRelationshipDegree({
+    required String selectorId,
+    required String candidateId,
+    required bool fromSelectorPerspective, // true = selector_relation, false = candidate_relation
+  }) async {
+    try {
+      final client = await _supabaseService.client;
+      
+      final columnName = fromSelectorPerspective ? 'selector_relation' : 'candidate_relation';
+      
+      final response = await client
+          .from('selector_candidates')
+          .select(columnName)
+          .eq('selector_id', selectorId)
+          .eq('candidate_id', candidateId)
+          .maybeSingle();
+
+      return response?[columnName] as String?;
+    } catch (error) {
+      print('Error getting dual relationship degree: $error');
+      return null;
     }
   }
 }

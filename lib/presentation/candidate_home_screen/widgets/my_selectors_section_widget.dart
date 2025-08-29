@@ -8,6 +8,8 @@ class MySelectorsSection extends StatelessWidget {
   final UserProfile? selectedSelector;
   final Function(UserProfile) onSelectorSelected;
   final Map<String, int> pendingCounts;
+  final bool showRelationshipDegree;
+  final Function(UserProfile)? onRemoveSelector;
 
   const MySelectorsSection({
     super.key,
@@ -15,6 +17,8 @@ class MySelectorsSection extends StatelessWidget {
     required this.selectedSelector,
     required this.onSelectorSelected,
     required this.pendingCounts,
+    this.showRelationshipDegree = false,
+    this.onRemoveSelector,
   });
 
   @override
@@ -126,6 +130,7 @@ class MySelectorsSection extends StatelessWidget {
             isSelected: isSelected,
             pendingCount: pendingCount,
             onTap: () => onSelectorSelected(selector),
+            onLongPress: onRemoveSelector != null ? () => _showRemoveDialog(context, selector) : null,
           );
         },
       ),
@@ -137,6 +142,7 @@ class MySelectorsSection extends StatelessWidget {
     required bool isSelected,
     required int pendingCount,
     required VoidCallback onTap,
+    VoidCallback? onLongPress,
   }) {
     return AnimatedContainer(
       duration: Duration(milliseconds: 300),
@@ -147,6 +153,7 @@ class MySelectorsSection extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(16),
           splashColor: AppTheme.lightTheme.primaryColor.withAlpha(26),
           highlightColor: AppTheme.lightTheme.primaryColor.withAlpha(13),
@@ -242,7 +249,9 @@ class MySelectorsSection extends StatelessWidget {
                 ),
                 SizedBox(height: 1.h),
                 Text(
-                  selector.fullName,
+                  showRelationshipDegree && selector.relationshipType != null && selector.relationshipType!.isNotEmpty 
+                    ? selector.relationshipType! 
+                    : selector.fullName,
                   style: AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                     color: isSelected
@@ -304,6 +313,35 @@ class MySelectorsSection extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showRemoveDialog(BuildContext context, UserProfile selector) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Görücüyü Kaldır'),
+          content: Text('${selector.fullName} adlı görücüyü listenizden kaldırmak istediğinize emin misiniz?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('İptal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onRemoveSelector?.call(selector);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.errorColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Kaldır'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

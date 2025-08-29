@@ -6,6 +6,7 @@ import '../../core/app_export.dart';
 import '../../models/match_proposal.dart';
 import '../../services/match_proposal_service.dart';
 import '../../services/user_service.dart';
+import '../../services/supabase_service.dart';
 import './widgets/empty_selectors_widget.dart';
 import './widgets/invite_selector_widget.dart';
 import './widgets/selector_card_widget.dart';
@@ -61,12 +62,14 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     super.dispose();
   }
 
-  /// Yakınlık derecelerini yükle
+  /// Yakınlık derecelerini yükle (dual relationship support)
   Future<void> _loadRelationshipDegrees(List<Map<String, dynamic>> selectors, UserProfile currentUser) async {
     for (var selector in selectors) {
       try {
         String selectorId, candidateId;
-        if (currentUser.role == UserRole.selector) {
+        bool isCurrentUserSelector = currentUser.role == UserRole.selector;
+        
+        if (isCurrentUserSelector) {
           selectorId = currentUser.id;
           candidateId = selector['id'] as String;
         } else {
@@ -74,12 +77,16 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
           candidateId = currentUser.id;
         }
         
-        final relationshipDegree = await _userService.getRelationshipDegree(
+        // Get relationship degree from current user's perspective
+        final relationshipDegree = await _userService.getDualRelationshipDegree(
           selectorId: selectorId,
           candidateId: candidateId,
+          fromSelectorPerspective: isCurrentUserSelector,
         );
         
         selector['relationshipDegree'] = relationshipDegree ?? '';
+        
+        print('DEBUG: Loaded relationship degree for ${selector['name']}: "${relationshipDegree}" (from ${isCurrentUserSelector ? 'selector' : 'candidate'} perspective)');
       } catch (e) {
         print('Error loading relationship degree for ${selector['id']}: $e');
         selector['relationshipDegree'] = '';
@@ -106,7 +113,8 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
       }
 
       List<Map<String, dynamic>> loadedSelectors = [];
-      List<MatchProposal> proposals = []; // Proposals'ı burada tanımla
+      List<MatchProposal> proposals = []; // Proposals'ı burada tanımla  
+      List<UserProfile> selectors = []; // Selectors'ı burada tanımla
 
       if (currentUser.role == UserRole.selector) {
         // For selectors: Get candidates with their status (including paused ones)
@@ -171,37 +179,52 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
           };
         }).toList();
       } else if (currentUser.role == UserRole.candidate) {
-        // For candidates: Get selectors (similar to candidate home screen logic)
-        final matchProposalService = MatchProposalService();
-        proposals =
-            await matchProposalService.getProposalsForCandidate(currentUser.id);
-
-        // Yeni eşleşmeleri say
-        final matchedProposals = proposals
-            .where((p) =>
-                p.status == AcceptanceStatus.accepted &&
-                p.targetStatus == AcceptanceStatus.accepted)
-            .toList();
-
-        // Extract unique selector IDs from proposals
-        final selectorIds = proposals.map((p) => p.selectorId).toSet().toList();
-        final selectors = <UserProfile>[];
-
-        for (final selectorId in selectorIds) {
-          try {
-            final selector = await _userService.getUserProfile(selectorId);
-            if (selector != null) {
-              selectors.add(selector);
+        // For candidates: Get selectors from selector_candidates table (NOT match_proposals)
+        print('DEBUG MY_SELECTORS LOAD: Loading selectors for candidate ${currentUser.id}');
+        
+        try {
+          final candidateSelectorsWithRelation = await _userService.getCandidateSelectorsWithRelation(currentUser.id);
+          print('DEBUG MY_SELECTORS LOAD: Found ${candidateSelectorsWithRelation.length} selector relationships');
+          for (final relation in candidateSelectorsWithRelation) {
+            try {
+              print('DEBUG MY_SELECTORS LOAD: Adding selector ${relation.selector.fullName} (status: ${relation.status})');
+              selectors.add(relation.selector);
+            } catch (e) {
+              print('DEBUG MY_SELECTORS LOAD: Error adding selector ${relation.selector.id}: $e');
             }
-          } catch (e) {
-            print('Error loading selector $selectorId: $e');
+          }
+          
+          // Also load match proposals for statistics
+          final matchProposalService = MatchProposalService();
+          proposals = await matchProposalService.getProposalsForCandidate(currentUser.id);
+        } catch (e) {
+          print('DEBUG MY_SELECTORS LOAD: Error in candidate selectors loading: $e');
+          // Fallback to old method if new method fails
+          final matchProposalService = MatchProposalService();
+          proposals = await matchProposalService.getProposalsForCandidate(currentUser.id);
+          
+          // Extract unique selector IDs from proposals
+          final selectorIds = proposals.map((p) => p.selectorId).toSet().toList();
+
+          for (final selectorId in selectorIds) {
+            try {
+              final selector = await _userService.getUserProfile(selectorId);
+              if (selector != null) {
+                selectors.add(selector);
+              }
+            } catch (e) {
+              print('Error loading selector $selectorId: $e');
+            }
           }
         }
 
-        // Get relation information for each selector
+        // Get relation and status information for each selector  
         final selectorRelations = <String, String>{};
+        final selectorStatuses = <String, String>{};
+        
         for (final selector in selectors) {
           try {
+            // Get relation
             final relationResponse = await _userService.getRelationshipDegree(
               selectorId: selector.id, 
               candidateId: currentUser.id,
@@ -209,13 +232,28 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             if (relationResponse != null) {
               selectorRelations[selector.id] = relationResponse;
             }
+            
+            // Get status from selector_candidates table
+            final supabaseService = SupabaseService();
+            final client = await supabaseService.client;
+            final statusResponse = await client
+                .from('selector_candidates')
+                .select('status')
+                .eq('selector_id', selector.id)
+                .eq('candidate_id', currentUser.id)
+                .maybeSingle();
+            
+            selectorStatuses[selector.id] = statusResponse?['status'] ?? 'active';
           } catch (e) {
-            print('Error getting relation for selector ${selector.id}: $e');
+            print('Error getting relation/status for selector ${selector.id}: $e');
+            selectorStatuses[selector.id] = 'active'; // Default to active
           }
         }
 
         // Convert UserProfile selectors to selector format for UI consistency
         loadedSelectors = selectors.map((selector) {
+          final status = selectorStatuses[selector.id] ?? 'active';
+          
           // Calculate real stats for this selector (from candidate's perspective)
           final selectorProposals = proposals.where((proposal) => 
               proposal.selectorId == selector.id
@@ -244,7 +282,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                 ? selector.imageUrl
                 : _getDefaultImageForCandidate(selector.fullName),
             "relationshipType": _getRelationshipType(selector),
-            "isActive": selector.isActive,
+            "isActive": status == 'active', // Use database status
             "totalSent": totalSent,
             "pending": pending,
             "accepted": accepted,
@@ -253,7 +291,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             "lastActivity": _getLastActivity(selector),
             "joinedDate": _formatJoinDate(selector.createdAt),
             "description": selector.bio ?? _getDefaultDescription(selector),
-            "isPaused": !selector.isActive,
+            "isPaused": status == 'paused', // Use database status
             "age": selector.age,
             "location": selector.location,
             "profession": selector.profession,
@@ -580,29 +618,27 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                       ],
                     ),
                     
-                    // Delete button for selectors viewing candidates
-                    if (_isCurrentUserSelector()) ...[
-                      SizedBox(height: 2.h),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showDeleteCandidateDialog(selector),
-                          icon: Icon(
-                            Icons.delete_outline,
+                    // Delete button for both roles
+                    SizedBox(height: 2.h),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showDeleteDialog(selector),
+                        icon: Icon(
+                          Icons.delete_outline,
+                          color: AppTheme.errorColor,
+                        ),
+                        label: Text(
+                          _isCurrentUserSelector() ? 'Adayı Sil' : 'Seçiciyi Sil',
+                          style: TextStyle(
                             color: AppTheme.errorColor,
                           ),
-                          label: Text(
-                            'Adayı Sil',
-                            style: TextStyle(
-                              color: AppTheme.errorColor,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: AppTheme.errorColor),
-                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppTheme.errorColor),
                         ),
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -641,7 +677,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     );
   }
 
-  void _toggleSelectorStatus(Map<String, dynamic> selector) async {
+  Future<void> _toggleSelectorStatus(Map<String, dynamic> selector) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUser = authProvider.currentUserProfile;
     if (currentUser == null) return;
@@ -803,16 +839,25 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             child: const Text("İptal"),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              Navigator.pop(context);
+              
+              // Önce duraktat
+              await _toggleSelectorStatus(selector);
+              
+              // Kısa bir gecikme
+              await Future.delayed(Duration(milliseconds: 500));
+              
+              // Sonra kaldır
               setState(() {
                 _allSelectors.removeWhere((s) => s['id'] == selector['id']);
                 _filteredSelectors
                     .removeWhere((s) => s['id'] == selector['id']);
               });
-              Navigator.pop(context);
+              
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text("${selector['name']} kaldırıldı"),
+                  content: Text("${selector['name']} otomatik duraklatılarak kaldırıldı"),
                   action: SnackBarAction(
                     label: "Geri Al",
                     onPressed: () {
@@ -1506,7 +1551,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     });
   }
 
-  /// Yakınlık derecesini veritabanında güncelle
+  /// Yakınlık derecesini veritabanında güncelle (dual relationship support)
   Future<void> _updateRelationshipDegreeInDatabase(Map<String, dynamic> selector, String degree) async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -1515,7 +1560,9 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
       if (currentUser == null) return;
       
       String selectorId, candidateId;
-      if (currentUser.role == UserRole.selector) {
+      bool isCurrentUserSelector = currentUser.role == UserRole.selector;
+      
+      if (isCurrentUserSelector) {
         selectorId = currentUser.id;
         candidateId = selector['id'] as String;
       } else {
@@ -1523,13 +1570,31 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
         candidateId = currentUser.id;
       }
       
-      await _userService.updateRelationshipDegree(
-        selectorId: selectorId,
-        candidateId: candidateId,
-        relationshipDegree: degree,
-      );
+      print('DEBUG MY_SELECTORS: Updating dual relationship degree');
+      print('DEBUG MY_SELECTORS: SelectorId: $selectorId, CandidateId: $candidateId, Degree: $degree');
+      print('DEBUG MY_SELECTORS: From ${isCurrentUserSelector ? 'selector' : 'candidate'} perspective');
+      
+      // Use new dual relationship function
+      if (isCurrentUserSelector) {
+        // Current user is selector, update selector_relation field
+        await _userService.updateDualRelationshipDegree(
+          selectorId: selectorId,
+          candidateId: candidateId,
+          selectorRelation: degree,
+        );
+      } else {
+        // Current user is candidate, update candidate_relation field
+        await _userService.updateDualRelationshipDegree(
+          selectorId: selectorId,
+          candidateId: candidateId,
+          candidateRelation: degree,
+        );
+      }
       
     } catch (e) {
+      print('DEBUG MY_SELECTORS: Error updating dual relationship degree: $e');
+      print('DEBUG MY_SELECTORS: Error type: ${e.runtimeType}');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Veritabanı güncellenirken hata: $e'),
@@ -1546,7 +1611,107 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     return authProvider.currentUserProfile?.role == UserRole.selector;
   }
   
-  /// Show delete candidate confirmation dialog
+  /// Show delete confirmation dialog (for both candidates and selectors)
+  void _showDeleteDialog(Map<String, dynamic> selector) {
+    final isSelector = _isCurrentUserSelector();
+    final itemType = isSelector ? 'Adayı' : 'Seçiciyi';
+    final itemName = selector['name'] as String;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: AppTheme.errorColor,
+              size: 28,
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Text(
+                '$itemType Sil',
+                style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                  color: AppTheme.errorColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$itemName kişisini ${isSelector ? 'adaylarınız' : 'seçicileriniz'} listesinden kalıcı olarak silmek istediğinizden emin misiniz?',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+            ),
+            SizedBox(height: 2.h),
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: AppTheme.warningColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.warningColor.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: AppTheme.warningColor,
+                    size: 20,
+                  ),
+                  SizedBox(width: 2.w),
+                  Expanded(
+                    child: Text(
+                      'Bu işlem geri alınamaz. Tüm eşleşme geçmişi korunur.',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.warningColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'İptal',
+              style: TextStyle(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteRelationship(selector);
+            },
+            icon: Icon(Icons.delete_forever),
+            label: Text('Sil'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show delete candidate confirmation dialog (legacy method for selector role)
   void _showDeleteCandidateDialog(Map<String, dynamic> candidate) {
     showDialog(
       context: context,
@@ -1642,15 +1807,26 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
     );
   }
   
-  /// Delete candidate from selector's list
-  Future<void> _deleteCandidate(Map<String, dynamic> candidate) async {
+  /// Delete relationship (for both roles)
+  Future<void> _deleteRelationship(Map<String, dynamic> item) async {
     try {
+      print('DEBUG MY_SELECTORS DELETE: Starting deletion process');
+      print('DEBUG MY_SELECTORS DELETE: Item to delete: ${item['name']} (ID: ${item['id']})');
+      
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUserProfile;
       
-      if (currentUser == null || currentUser.role != UserRole.selector) {
+      if (currentUser == null) {
+        print('DEBUG MY_SELECTORS DELETE: Current user is null, aborting');
         return;
       }
+      
+      final isSelector = currentUser.role == UserRole.selector;
+      final itemType = isSelector ? 'Aday' : 'Seçici';
+      
+      print('DEBUG MY_SELECTORS DELETE: Current user role: ${currentUser.role}');
+      print('DEBUG MY_SELECTORS DELETE: Is selector: $isSelector');
+      print('DEBUG MY_SELECTORS DELETE: Item type: $itemType');
       
       // Show loading
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1666,7 +1842,7 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
                 ),
               ),
               SizedBox(width: 3.w),
-              Text('Aday siliniyor...'),
+              Text('$itemType siliniyor...'),
             ],
           ),
           backgroundColor: AppTheme.lightTheme.primaryColor,
@@ -1674,25 +1850,53 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
         ),
       );
       
-      // Remove from database
-      await _userService.removeCandidateFromSelector(
-        selectorId: currentUser.id,
-        candidateId: candidate['id'] as String,
-      );
+      // Remove from database based on role
+      print('DEBUG MY_SELECTORS DELETE: Before database deletion');
+      if (isSelector) {
+        print('DEBUG MY_SELECTORS DELETE: Removing candidate from selector');
+        await _userService.removeCandidateFromSelector(
+          selectorId: currentUser.id,
+          candidateId: item['id'] as String,
+        );
+      } else {
+        print('DEBUG MY_SELECTORS DELETE: Removing selector-candidate relationship');
+        print('DEBUG MY_SELECTORS DELETE: SelectorId: ${item['id']}, CandidateId: ${currentUser.id}');
+        await _userService.removeSelectorCandidate(
+          selectorId: item['id'] as String,
+          candidateId: currentUser.id,
+        );
+      }
+      print('DEBUG MY_SELECTORS DELETE: Database deletion completed');
       
       // Remove from local lists
+      final beforeCount = _allSelectors.length;
+      final beforeFilteredCount = _filteredSelectors.length;
+      print('DEBUG MY_SELECTORS DELETE: Before local removal - AllSelectors: $beforeCount, Filtered: $beforeFilteredCount');
+      
       setState(() {
-        _allSelectors.removeWhere((s) => s['id'] == candidate['id']);
-        _filteredSelectors.removeWhere((s) => s['id'] == candidate['id']);
+        _allSelectors.removeWhere((s) => s['id'] == item['id']);
+        _filteredSelectors.removeWhere((s) => s['id'] == item['id']);
       });
+      
+      final afterCount = _allSelectors.length;
+      final afterFilteredCount = _filteredSelectors.length;
+      print('DEBUG MY_SELECTORS DELETE: After local removal - AllSelectors: $afterCount, Filtered: $afterFilteredCount');
       
       // Close detail modal if it's open
       Navigator.pop(context);
       
+      // Reload data to ensure consistency
+      print('DEBUG MY_SELECTORS DELETE: Reloading data');
+      await _loadMockData();
+      
+      final finalCount = _allSelectors.length;
+      final finalFilteredCount = _filteredSelectors.length;
+      print('DEBUG MY_SELECTORS DELETE: After reload - AllSelectors: $finalCount, Filtered: $finalFilteredCount');
+      
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${candidate['name']} başarıyla silindi'),
+          content: Text('${item['name']} başarıyla silindi'),
           backgroundColor: AppTheme.successColor,
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
@@ -1701,12 +1905,12 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
             onPressed: () {
               // Add back to lists (UI only - would need restore logic for database)
               setState(() {
-                _allSelectors.add(candidate);
+                _allSelectors.add(item);
                 _onSearchChanged();
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('${candidate['name']} geri eklendi (geçici)'),
+                  content: Text('${item['name']} geri eklendi (geçici)'),
                   backgroundColor: AppTheme.lightTheme.primaryColor,
                 ),
               );
@@ -1716,17 +1920,25 @@ class _MySelectorsScreenState extends State<MySelectorsScreen> {
       );
       
     } catch (e) {
+      print('DEBUG MY_SELECTORS DELETE: Error occurred: $e');
+      print('DEBUG MY_SELECTORS DELETE: Error type: ${e.runtimeType}');
+      
       // Hide loading and show error
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Aday silinirken hata oluştu: $e'),
+          content: Text('${_isCurrentUserSelector() ? 'Aday' : 'Seçici'} silinirken hata oluştu: $e'),
           backgroundColor: AppTheme.errorColor,
           behavior: SnackBarBehavior.floating,
           duration: Duration(seconds: 4),
         ),
       );
     }
+  }
+
+  /// Delete candidate from selector's list (legacy method)
+  Future<void> _deleteCandidate(Map<String, dynamic> candidate) async {
+    return _deleteRelationship(candidate);
   }
 }
