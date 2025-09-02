@@ -19,6 +19,7 @@ class _MatchesScreenState extends State<MatchesScreen> {
   final ChatService _chatService = ChatService();
 
   Set<String> _viewedConversations = {}; // Track locally viewed conversations
+  Map<String, int> _previousUnreadCounts = {}; // Track previous unread counts
 
   @override
   void initState() {
@@ -59,25 +60,50 @@ class _MatchesScreenState extends State<MatchesScreen> {
     }
   }
 
+
   void _updateViewedConversationsForNewMessages(List<Map<String, dynamic>> conversations) {
-    // Remove viewed status from conversations that now have unread messages
-    // This ensures that new messages will show badges even if previously viewed
     final conversationsWithNewMessages = <String>{};
+    final conversationsWithNoMessages = <String>{};
     
     for (final conversation in conversations) {
       final conversationId = conversation['conversation_id'] as String;
       final unreadCount = conversation['unread_count'] as int;
+      final previousUnreadCount = _previousUnreadCounts[conversationId] ?? 0;
       
-      // If conversation has unread messages and was previously viewed, remove viewed status
-      if (unreadCount > 0 && _viewedConversations.contains(conversationId)) {
-        conversationsWithNewMessages.add(conversationId);
+      // Check if this is genuinely a new message (unread count increased)
+      if (unreadCount > previousUnreadCount) {
+        // New messages arrived, remove from viewed list
+        if (_viewedConversations.contains(conversationId)) {
+          conversationsWithNewMessages.add(conversationId);
+          print('🔥 MATCHES: New message detected for $conversationId (was $previousUnreadCount, now $unreadCount)');
+        }
+      } else if (unreadCount == 0) {
+        // If conversation has no unread messages and is not in viewed list, add it
+        if (!_viewedConversations.contains(conversationId)) {
+          conversationsWithNoMessages.add(conversationId);
+        }
       }
+      
+      // Update previous unread count
+      _previousUnreadCounts[conversationId] = unreadCount;
     }
+    
+    bool shouldSave = false;
     
     if (conversationsWithNewMessages.isNotEmpty) {
       _viewedConversations.removeAll(conversationsWithNewMessages);
-      _saveViewedConversations(); // Save updated state
+      shouldSave = true;
       print('🔥 MATCHES: Removed viewed status from ${conversationsWithNewMessages.length} conversations with new messages');
+    }
+    
+    if (conversationsWithNoMessages.isNotEmpty) {
+      _viewedConversations.addAll(conversationsWithNoMessages);
+      shouldSave = true;
+      print('🔥 MATCHES: Added viewed status to ${conversationsWithNoMessages.length} conversations with no unread messages');
+    }
+    
+    if (shouldSave) {
+      _saveViewedConversations();
     }
   }
 
@@ -103,18 +129,22 @@ class _MatchesScreenState extends State<MatchesScreen> {
   Future<void> _loadMatches() async {
     try {
       print('🔥 MATCHES: _loadMatches called, current conversations count: ${_conversations.length}');
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _errorMessage = null;
+        });
+      }
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUser = authProvider.currentUserProfile;
 
       if (currentUser == null) {
-        setState(() {
-          _errorMessage = 'Kullanıcı oturumu bulunamadı';
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Kullanıcı oturumu bulunamadı';
+          });
+        }
         return;
       }
 
@@ -130,19 +160,25 @@ class _MatchesScreenState extends State<MatchesScreen> {
       // Check for new messages and remove viewed status if there are new unread messages
       _updateViewedConversationsForNewMessages(conversations);
       
-      setState(() {
-        _conversations = conversations;
-      });
-      print('🔥 MATCHES: setState completed with new conversations');
+      if (mounted) {
+        setState(() {
+          _conversations = conversations;
+        });
+        print('🔥 MATCHES: setState completed with new conversations');
+      }
     } catch (e) {
       print('🔥 MATCHES: Error in _loadMatches: $e');
-      setState(() {
-        _errorMessage = 'Konuşmalar yüklenirken hata oluştu: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Konuşmalar yüklenirken hata oluştu: $e';
+        });
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -236,14 +272,15 @@ class _MatchesScreenState extends State<MatchesScreen> {
 
           // Use local state to determine if conversation should show badge
           final isViewedLocally = _viewedConversations.contains(conversationId);
-          final localUnreadCount = (databaseUnreadCount > 0 && !isViewedLocally) ? databaseUnreadCount : 0;
 
           return _buildConversationTile(
             conversation: conversation,
+            conversationId: conversationId,
             partnerName: partnerName,
             partnerImageUrl: partnerImageUrl,
             latestMessage: latestMessage,
-            unreadCount: localUnreadCount,
+            unreadCount: databaseUnreadCount,
+            isViewedLocally: isViewedLocally,
           );
         },
       ),
@@ -252,10 +289,12 @@ class _MatchesScreenState extends State<MatchesScreen> {
 
   Widget _buildConversationTile({
     required Map<String, dynamic> conversation,
+    required String conversationId,
     required String partnerName,
     String? partnerImageUrl,
     Map<String, dynamic>? latestMessage,
     required int unreadCount,
+    required bool isViewedLocally,
   }) {
     final currentUser =
         Provider.of<AuthProvider>(context, listen: false).currentUserProfile;
@@ -379,10 +418,10 @@ class _MatchesScreenState extends State<MatchesScreen> {
                         latestMessage['content'] as String,
                         style: TextStyle(
                           fontSize: 13.sp,
-                          color: unreadCount > 0
+                          color: (unreadCount > 0 && !isViewedLocally)
                               ? Colors.grey[800]
                               : Colors.grey[600],
-                          fontWeight: unreadCount > 0
+                          fontWeight: (unreadCount > 0 && !isViewedLocally)
                               ? FontWeight.w500
                               : FontWeight.normal,
                         ),
@@ -413,12 +452,16 @@ class _MatchesScreenState extends State<MatchesScreen> {
                 _formatMessageTime(DateTime.parse(latestMessage['created_at'])),
                 style: TextStyle(
                   fontSize: 11.sp,
-                  color: unreadCount > 0 ? Color(0xFF6C63FF) : Colors.grey[500],
-                  fontWeight:
-                      unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                  color: (unreadCount > 0 && !isViewedLocally) 
+                      ? Color(0xFF6C63FF) 
+                      : Colors.grey[500],
+                  fontWeight: (unreadCount > 0 && !isViewedLocally) 
+                      ? FontWeight.w600 
+                      : FontWeight.normal,
                 ),
               ),
-            if (unreadCount > 0) ...[
+            // Only show badge if there are unread messages AND conversation hasn't been viewed locally
+            if (unreadCount > 0 && !isViewedLocally) ...[
               SizedBox(height: 0.5.h),
               Container(
                 padding: EdgeInsets.symmetric(
@@ -449,13 +492,14 @@ class _MatchesScreenState extends State<MatchesScreen> {
           ],
         ),
         onTap: () async {
-          final conversationId = conversation['conversation_id'] as String;
           print('🔥 MATCHES: Conversation tapped: $conversationId');
           
           // Immediately mark conversation as viewed locally and update UI
-          setState(() {
-            _viewedConversations.add(conversationId);
-          });
+          if (mounted) {
+            setState(() {
+              _viewedConversations.add(conversationId);
+            });
+          }
           
           // Save to SharedPreferences for persistence
           await _saveViewedConversations();
@@ -481,7 +525,8 @@ class _MatchesScreenState extends State<MatchesScreen> {
             },
           );
           
-          // Reload conversations when returning from chat to get any new messages
+          // Wait much longer for database to properly update, then reload conversations
+          await Future.delayed(Duration(milliseconds: 5000));
           await _loadMatches();
         },
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import '../../models/message.dart';
@@ -49,6 +50,7 @@ class _ChatScreenState extends State<ChatScreen> {
       };
       setState(() {}); // Refresh UI with partner data
       _checkMatchStatus();
+      _markCurrentConversationAsViewed();
     });
     
     _messageFocusNode.addListener(_onFocusChange);
@@ -80,6 +82,36 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Mark current conversation as viewed when chat screen is opened
+  Future<void> _markCurrentConversationAsViewed() async {
+    try {
+      if (_matchId == null || _currentUserId == null) return;
+      
+      final conversationId = await _chatService.getOrCreateConversation(_matchId!);
+      await _markConversationAsViewed(conversationId);
+    } catch (e) {
+      print('🔥 CHAT_SCREEN: Error marking current conversation as viewed: $e');
+    }
+  }
+
+  // Mark conversation as viewed in SharedPreferences
+  Future<void> _markConversationAsViewed(String conversationId) async {
+    try {
+      if (_currentUserId == null) return;
+      
+      final prefs = await SharedPreferences.getInstance();
+      final viewedList = prefs.getStringList('viewedConversations_$_currentUserId') ?? [];
+      
+      if (!viewedList.contains(conversationId)) {
+        viewedList.add(conversationId);
+        await prefs.setStringList('viewedConversations_$_currentUserId', viewedList);
+        print('🔥 CHAT_SCREEN: Marked conversation as viewed: $conversationId');
+      }
+    } catch (e) {
+      print('🔥 CHAT_SCREEN: Error marking conversation as viewed: $e');
+    }
+  }
+
   // Send message function
   Future<void> _sendMessage() async {
     final messageText = _messageController.text.trim();
@@ -101,6 +133,9 @@ class _ChatScreenState extends State<ChatScreen> {
         senderId: _currentUserId!,
         content: messageText,
       );
+
+      // Mark this conversation as viewed when user sends a message
+      await _markConversationAsViewed(conversationId);
 
       // Scroll to bottom after sending
       WidgetsBinding.instance.addPostFrameCallback((_) {
